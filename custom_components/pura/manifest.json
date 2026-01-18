@@ -1,13 +1,22 @@
 {
   "domain": "pura",
   "name": "Pura",
-  "codeowners": ["@natekspencer"],
+  "codeowners": [
+    "@natekspencer"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/natekspencer/hacs-pura",
+  "documentation": "https://github.com/natekspencer/ha-pura",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/natekspencer/hacs-pura/issues",
-  "loggers": ["custom_components.pura", "pypura"],
-  "requirements": ["pypura==2.1.0", "deepdiff", "ical"],
+  "issue_tracker": "https://github.com/natekspencer/ha-pura/issues",
+  "loggers": [
+    "custom_components.pura",
+    "pypura"
+  ],
+  "requirements": [
+    "pypura==2.1.0",
+    "deepdiff",
+    "ical"
+  ],
   "version": "0.0.0"
 }

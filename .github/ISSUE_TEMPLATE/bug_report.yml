@@ -5,9 +5,9 @@ body:
     attributes:
       value: |
         Before submitting an issue:
-          1. Validate you are running the [latest version of the integration](https://github.com/natekspencer/hacs-pura/releases)
+          1. Validate you are running the [latest version of the integration](https://github.com/natekspencer/ha-pura/releases)
           2. Open the official Pura app and test if the same functionality works there
-          3. Search [existing issues](https://github.com/natekspencer/hacs-pura/issues) (open and recently closed) to see if what you are experiencing has already been reported
+          3. Search [existing issues](https://github.com/natekspencer/ha-pura/issues) (open and recently closed) to see if what you are experiencing has already been reported
   - type: textarea
     validations:
       required: true
