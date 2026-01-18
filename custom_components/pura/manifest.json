@@ -14,7 +14,7 @@
     "pypura"
   ],
   "requirements": [
-    "pypura==2.1.0",
+    "pypura==2.1.1",
     "deepdiff",
     "ical"
   ],
