@@ -57,6 +57,39 @@ If you created your Pura account using one of the third-party provider options (
 6. Follow the steps in the Pura app to set your new password (check your email, enter the verification code and create your password). If you didn't receive a verification code, check your spam folder or request a new code.
 7. Once you have successfully set a password, follow the configuration steps above.
 
+## Actions
+
+The following custom actions are available:
+
+### `start_timer`
+
+Start a fragrance timer.
+
+| Field         | Required | Type     | Default  | Description                                                                                                                           |
+| ------------- | -------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `area_id`\*   | No       | Area     | None     | The area(s) to target. If an area is specified, all Pura devices in that area will be targeted. (e.g., `living_room`).                |
+| `device_id`\* | No       | Device   | None     | The device(s) to target, filtered by Pura models.                                                                                     |
+| `slot`        | No       | Select   | None     | The slot (`"1"` or `"2"`) of an available fragrance. Leave blank to automatically select the fragrance with the most scent remaining. |
+| `intensity`   | Yes      | Number   | 4        | The intensity of the fragrance. 1 is the lowest (subtle), and 10 is the highest (strong).                                             |
+| `duration`    | Yes      | Duration | 00:30:00 | How long the diffuser should run for.                                                                                                 |
+
+\* - Either an area_id with Pura devices or a valid Pura device_id must be supplied or an error will occur.
+
+Example:
+
+```yaml
+action: pura.start_timer
+data:
+  device_id:
+    - <device-id>
+  slot: "1"
+  intensity: 9
+  duration:
+    hours: 0
+    minutes: 30
+    seconds: 0
+```
+
 ---
 
 ## Support Me

@@ -140,20 +140,20 @@
           "name": "Area ID(s)"
         },
         "device_id": {
-          "description": "The device(s) to target.",
+          "description": "The device(s) to target, filtered by Pura models.",
           "name": "Device ID(s)"
         },
         "slot": {
-          "name": "Slot",
-          "description": "Fragrance slot. Leave blank to automatically select the fragrance with the most scent remaining."
+          "description": "The slot of an available fragrance. Leave blank to automatically select the fragrance with the most scent remaining.",
+          "name": "Slot"
         },
         "intensity": {
-          "name": "Intensity",
-          "description": "Fragrance intensity."
+          "description": "The intensity of the fragrance. 1 is the lowest (subtle), and 10 is the highest (strong).",
+          "name": "Intensity"
         },
         "duration": {
-          "name": "Duration",
-          "description": "Timer duration."
+          "description": "How long the diffuser should run for.",
+          "name": "Duration"
         }
       }
     }
