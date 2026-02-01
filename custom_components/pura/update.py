@@ -72,7 +72,8 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
 
     async def async_update(self) -> None:
         """Update the entity."""
-        version = "v2" if "Pro" in determine_pura_model(self.get_device()) else "v1"
+        model = determine_pura_model(self.get_device()) or ""
+        version = "v2" if "Pro" in model else "v1"
         try:
             details: str = await self.hass.async_add_executor_job(
                 self.coordinator.api.get_latest_firmware_details, "car", version
