@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import PuraConfigEntry
 from .coordinator import PuraDataUpdateCoordinator
 from .entity import PuraEntity
-from .helpers import get_device_id
+from .helpers import determine_pura_model, get_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,9 +72,11 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
 
     async def async_update(self) -> None:
         """Update the entity."""
+        model = determine_pura_model(self.get_device()) or ""
+        version = "v2" if "Pro" in model else "v1"
         try:
             details: str = await self.hass.async_add_executor_job(
-                self.coordinator.api.get_latest_firmware_details, "car", "v1"
+                self.coordinator.api.get_latest_firmware_details, "car", version
             )
             firmware = {
                 (part := line.split("=", 1))[0].lower(): part[1]
