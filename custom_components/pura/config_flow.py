@@ -1,4 +1,5 @@
 """Pura config flow."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +8,11 @@ from typing import Any
 from pypura import Pura, PuraAuthenticationError
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlowWithConfigEntry
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    OptionsFlowWithConfigEntry,
+)
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
@@ -138,7 +143,9 @@ class PuraConfigFlow(ConfigFlow, domain=DOMAIN):
 class PuraOptionsFlowHandler(OptionsFlowWithConfigEntry):
     """Handle Pura options."""
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

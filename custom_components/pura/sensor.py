@@ -94,12 +94,14 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="active_fragrance",
             translation_key="active_fragrance",
             icon="mdi:scent",
-            value_fn=lambda data: fragrance_name(data, 1)
-            if (bay := data["bay1"]) and bay["activeAt"]
-            else (
-                fragrance_name(data, 2)
-                if (bay := data["bay2"]) and bay["activeAt"]
-                else "none"
+            value_fn=lambda data: (
+                fragrance_name(data, 1)
+                if (bay := data["bay1"]) and bay["activeAt"]
+                else (
+                    fragrance_name(data, 2)
+                    if (bay := data["bay2"]) and bay["activeAt"]
+                    else "none"
+                )
             ),
         ),
         PuraSensorEntityDescription(
@@ -194,17 +196,21 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="controller",
             translation_key="controller",
             entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda data: "schedule"
-            if (controller := data["controller"]).isnumeric()
-            else controller,
+            value_fn=lambda data: (
+                "schedule"
+                if (controller := data["controller"]).isnumeric()
+                else controller
+            ),
         ),
         PuraSensorEntityDescription(
             key="timer",
             translation_key="timer",
             device_class=SensorDeviceClass.TIMESTAMP,
-            value_fn=lambda data: None
-            if not (end := (data.get("timer") or {}).get("end"))
-            else utc_from_timestamp(end),
+            value_fn=lambda data: (
+                None
+                if not (end := (data.get("timer") or {}).get("end"))
+                else utc_from_timestamp(end)
+            ),
         ),
     ),
     ("mini",): (
