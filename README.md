@@ -1,9 +1,14 @@
+<!-- BEGIN AUTO-GENERATED HEADER -->
+
 [![Release](https://img.shields.io/github/v/release/natekspencer/ha-pura?style=for-the-badge)](https://github.com/natekspencer/ha-pura/releases)
+[![HACS Badge](https://img.shields.io/badge/HACS-default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Buy Me A Coffee/Beer](https://img.shields.io/badge/Buy_Me_A_☕/🍺-F16061?style=for-the-badge&logo=ko-fi&logoColor=white&labelColor=grey)](https://ko-fi.com/natekspencer)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor_💜-6f42c1?style=for-the-badge&logo=github&logoColor=white&labelColor=grey)](https://github.com/sponsors/natekspencer)
 
 ![Downloads](https://img.shields.io/github/downloads/natekspencer/ha-pura/total?style=flat-square)
 ![Latest Downloads](https://img.shields.io/github/downloads/natekspencer/ha-pura/latest/total?style=flat-square)
+
+<!-- END AUTO-GENERATED HEADER -->
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://brands.home-assistant.io/pura/dark_logo.png">
@@ -14,38 +19,46 @@
 
 Home Assistant integration for Pura smart fragrance diffusers.
 
-## Installation
+<!-- BEGIN AUTO-GENERATED INSTALLATION -->
 
-There are two main ways to install this custom component within your Home Assistant instance:
+## ⬇️ Installation
 
-1. Using HACS (see https://hacs.xyz/ for installation instructions if you do not already have it installed):
-   1. From within Home Assistant, click on the link to **HACS**
-   2. Click on **Integrations**
-   3. Click on the vertical ellipsis in the top right and select **Custom repositories**
-   4. Enter the URL for this repository in the section that says _Add custom repository URL_ and select **Integration** in the _Category_ dropdown list
-   5. Click the **ADD** button
-   6. Close the _Custom repositories_ window
-   7. You should now be able to see the _Pura_ card on the HACS Integrations page. Click on **INSTALL** and proceed with the installation instructions.
-   8. Restart your Home Assistant instance and then proceed to the _Configuration_ section below.
+### HACS (Recommended)
 
-2. Manual Installation:
-   1. Download or clone this repository
-   2. Copy the contents of the folder **custom_components/pura** into the same file structure on your Home Assistant instance
-      - An easy way to do this is using the [Samba add-on](https://www.home-assistant.io/getting-started/configuration/#editing-configuration-via-sambawindows-networking), but feel free to do so however you want
-   3. Restart your Home Assistant instance and then proceed to the _Configuration_ section below.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=natekspencer&repository=ha-pura&category=integration)
 
-While the manual installation above seems like less steps, it's important to note that you will not be able to see updates to this custom component unless you are subscribed to the watch list. You will then have to repeat each step in the process. By using HACS, you'll be able to see that an update is available and easily update the custom component.
+This integration is available in the default [HACS](https://hacs.xyz/) repository.
 
-## Configuration
+1. Use the **My Home Assistant** badge above, or from within Home Assistant, click on **HACS**
+2. Search for `Pura` and click on the appropriate repository
+3. Click **DOWNLOAD**
+4. Restart Home Assistant
 
-There is a config flow for this Pura integration. After installing the custom component:
+### Manual
 
-1. Go to **Configuration**->**Integrations**
-2. Click **+ ADD INTEGRATION** to setup a new integration
-3. Search for **Pura** and click on it
-4. You will be guided through the rest of the setup process via the config flow
+If you prefer manual installation:
 
-## Troubleshooting
+1. Download or clone this repository
+2. Copy the `custom_components/pura` folder to your Home Assistant `custom_components` directory
+3. Restart Home Assistant
+
+> ⚠️ Manual installation will not provide automatic update notifications. HACS installation is recommended unless you have a specific need.
+
+## ➕ Setup
+
+Once installed, you can set up the integration by clicking on the following badge:
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pura)
+
+Alternatively:
+
+1. Go to [Settings > Devices & services](https://my.home-assistant.io/redirect/integrations/)
+2. In the bottom-right corner, select **Add integration**
+3. Type `Pura` and select the **Pura** integration
+4. Follow the instructions to add the integration to your Home Assistant
+<!-- END AUTO-GENERATED INSTALLATION -->
+
+## 🚨 Troubleshooting
 
 If you created your Pura account using one of the third-party provider options (e.g., Apple, Facebook, Google), you will need to set a password on your account before using this integration. You will still be able to use your third-party provider sign in with the Pura mobile app or on [pura.com](https://pura.com/). To do so, follow these steps in the Pura mobile app:
 
@@ -57,7 +70,7 @@ If you created your Pura account using one of the third-party provider options (
 6. Follow the steps in the Pura app to set your new password (check your email, enter the verification code and create your password). If you didn't receive a verification code, check your spam folder or request a new code.
 7. Once you have successfully set a password, follow the configuration steps above.
 
-## Actions
+## 🎬 Actions
 
 The following custom actions are available:
 
@@ -92,12 +105,22 @@ data:
 
 ---
 
-## Support Me
+<!-- BEGIN AUTO-GENERATED FOOTER -->
 
-I'm not employed by Pura, and provide this custom component purely for your own enjoyment and home automation needs.
+## ❤️ Support Me
+
+I maintain this Home Assistant integration in my spare time. If you find it useful, consider supporting development:
+
+- 💜 [Sponsor me on GitHub](https://github.com/sponsors/natekspencer)
+- ☕ [Buy me a coffee / beer](https://ko-fi.com/natekspencer)
+- 💸 [PayPal (direct support)](https://www.paypal.com/paypalme/natekspencer)
+- ⭐ [Star this project](https://github.com/natekspencer/ha-pura)
+- 📦 If you’d like to support in other ways, such as donating hardware for testing, feel free to [reach out to me](https://github.com/natekspencer)
 
 If you don't already own a Pura diffuser, please consider using [my referal code (JG5JN31)](http://rwrd.io/ref_JG5JN31) to get $20 off your first order of $50+ (as well as a tip to me in appreciation)!
 
-If you already own a Pura diffuser and still want to donate, consider buying me a coffee ☕ (or beer 🍺) instead by using the link below:
+## 📈 Star History
 
-<a href='https://ko-fi.com/natekspencer' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' />
+[![Star History Chart](https://api.star-history.com/svg?repos=natekspencer/ha-pura)](https://www.star-history.com/#natekspencer/ha-pura)
+
+<!-- END AUTO-GENERATED FOOTER -->
