@@ -117,7 +117,7 @@ I maintain this Home Assistant integration in my spare time. If you find it usef
 - ⭐ [Star this project](https://github.com/natekspencer/ha-pura)
 - 📦 If you’d like to support in other ways, such as donating hardware for testing, feel free to [reach out to me](https://github.com/natekspencer)
 
-If you don't already own a Pura diffuser, please consider using [my referal code (JG5JN31)](http://rwrd.io/ref_JG5JN31) to get $20 off your first order of $50+ (as well as a tip to me in appreciation)!
+If you don't already own a Pura diffuser, please consider using [my referral code (JG5JN31)](http://rwrd.io/ref_JG5JN31) to get $20 off your first order of $50+ (as well as a tip to me in appreciation)!
 
 ## 📈 Star History
 
