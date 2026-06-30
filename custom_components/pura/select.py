@@ -14,7 +14,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
 from .const import DOMAIN
-from .coordinator import PuraDataUpdateCoordinator
 from .entity import PuraEntity
 from .helpers import get_device_id, has_fragrance, parse_intensity
 
@@ -25,26 +24,33 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PuraConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Pura selects using config entry."""
-    coordinator: PuraDataUpdateCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
+    known_devices: set[tuple[str, str]] = set()
 
-    entities = [
-        PuraSelectEntity(
-            coordinator=coordinator,
-            description=description,
-            device_type=device_type,
-            device_id=get_device_id(device),
-        )
-        for device_types, descriptions in SELECT_DESCRIPTIONS.items()
-        for device_type, devices in coordinator.devices.items()
-        if device_type in device_types
-        for device in devices
-        for description in descriptions
-    ]
+    def _check_devices() -> None:
+        new_devices = {
+            (device_type, get_device_id(device))
+            for device_type, devices in coordinator.data.items()
+            for device in devices
+        } - known_devices
 
-    if not entities:
-        return
+        if new_devices:
+            known_devices.update(new_devices)
+            async_add_entities(
+                PuraSelectEntity(
+                    coordinator=coordinator,
+                    description=description,
+                    device_type=device_type,
+                    device_id=device_id,
+                )
+                for device_types, descriptions in SELECT_DESCRIPTIONS.items()
+                for device_type, device_id in new_devices
+                if device_type in device_types
+                for description in descriptions
+            )
 
-    async_add_entities(entities)
+    _check_devices()
+    entry.async_on_unload(coordinator.async_add_listener(_check_devices))
 
 
 @dataclass(kw_only=True)
