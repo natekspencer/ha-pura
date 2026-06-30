@@ -41,31 +41,53 @@ async def async_setup_entry(
 ) -> None:
     """Set up Pura switchs using config entry."""
     coordinator = entry.runtime_data
-    entities = [
-        PuraSwitchEntity(
-            coordinator=coordinator,
-            description=description,
-            device_type=device_type,
-            device_id=get_device_id(device),
-        )
-        for hardware_versions, descriptions in SWITCHES.items()
-        for device_type, devices in coordinator.devices.items()
-        for device in devices
-        for description in descriptions
-        if get_hardware_major_version(device) in hardware_versions
-    ]
-    entities.extend(
-        PuraSwitchEntity(
-            coordinator=coordinator,
-            description=DIFFUSION_MODE_SWITCH,
-            device_type=device_type,
-            device_id=get_device_id(device),
-        )
-        for device_type, devices in coordinator.devices.items()
-        for device in devices
-        if len((device.get("capabilities") or {}).get("diffusionModes") or []) > 1
-    )
-    async_add_entities(entities)
+    known_devices: set[tuple[str, str]] = set()
+
+    def _check_devices() -> None:
+        new_devices = {
+            (device_type, get_device_id(device))
+            for device_type, devices in coordinator.data.items()
+            for device in devices
+        } - known_devices
+
+        if not new_devices:
+            return
+
+        known_devices.update(new_devices)
+        entities: list[PuraSwitchEntity] = []
+
+        for device_type, device_id in new_devices:
+            device = coordinator.get_device(device_type, device_id)
+            hardware_version = get_hardware_major_version(device)
+
+            for hardware_versions, descriptions in SWITCHES.items():
+                if hardware_version not in hardware_versions:
+                    continue
+                entities.extend(
+                    PuraSwitchEntity(
+                        coordinator=coordinator,
+                        description=description,
+                        device_type=device_type,
+                        device_id=device_id,
+                    )
+                    for description in descriptions
+                )
+
+            capabilities = device.get("capabilities") or {}
+            if len(capabilities.get("diffusionModes") or []) > 1:
+                entities.append(
+                    PuraSwitchEntity(
+                        coordinator=coordinator,
+                        description=DIFFUSION_MODE_SWITCH,
+                        device_type=device_type,
+                        device_id=device_id,
+                    )
+                )
+
+        async_add_entities(entities)
+
+    _check_devices()
+    entry.async_on_unload(coordinator.async_add_listener(_check_devices))
 
 
 @dataclass(frozen=True, kw_only=True)
