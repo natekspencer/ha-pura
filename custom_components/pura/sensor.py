@@ -226,6 +226,15 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
     ),
 }
 
+BATTERY_SENSOR = PuraSensorEntityDescription(
+    key="battery",
+    translation_key="battery",
+    device_class=SensorDeviceClass.BATTERY,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    native_unit_of_measurement=PERCENTAGE,
+    value_fn=lambda data: data["batteryRemaining"],
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: PuraConfigEntry, async_add_entities: AddEntitiesCallback
@@ -243,7 +252,7 @@ async def async_setup_entry(
 
         if new_devices:
             known_devices.update(new_devices)
-            async_add_entities(
+            entities = [
                 PuraSensorEntity(
                     coordinator=coordinator,
                     description=description,
@@ -254,7 +263,22 @@ async def async_setup_entry(
                 for device_type, device_id in new_devices
                 if device_type in device_types
                 for description in descriptions
+            ]
+            entities.extend(
+                PuraSensorEntity(
+                    coordinator=coordinator,
+                    description=BATTERY_SENSOR,
+                    device_type=device_type,
+                    device_id=device_id,
+                )
+                for device_type, device_id in new_devices
+                if device_type == "car"
+                and coordinator.get_device(device_type, device_id).get(
+                    "batteryRemaining"
+                )
+                is not None
             )
+            async_add_entities(entities)
 
     _check_devices()
     entry.async_on_unload(coordinator.async_add_listener(_check_devices))
