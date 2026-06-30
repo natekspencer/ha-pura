@@ -64,6 +64,9 @@
           "none": "None"
         }
       },
+      "battery": {
+        "name": "Battery"
+      },
       "bay_fragrance": {
         "name": "Slot {bay} fragrance"
       },
