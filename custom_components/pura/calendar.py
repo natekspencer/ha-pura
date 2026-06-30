@@ -9,9 +9,12 @@ from ical.calendar import Calendar
 from ical.event import Event
 from ical.types import Recur
 
-from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+from homeassistant.components.calendar import (
+    CalendarEntity,
+    CalendarEntityDescription,
+    CalendarEvent,
+)
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -21,7 +24,7 @@ from .coordinator import PuraDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-SCHEDULE = EntityDescription(key="schedule")
+SCHEDULE = CalendarEntityDescription(key="schedule")
 
 ONE_DAY = timedelta(days=1)
 
@@ -49,7 +52,7 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
     def __init__(
         self,
         coordinator: PuraDataUpdateCoordinator,
-        description: EntityDescription,
+        description: CalendarEntityDescription,
         entry: PuraConfigEntry,
     ) -> None:
         """Construct a PuraEntity."""
