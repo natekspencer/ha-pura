@@ -21,6 +21,7 @@ body:
       options:
         - label: Pura 3
         - label: Pura 4
+        - label: Pura Home
         - label: Pura Car
         - label: Other (please specify in the additional information field below)
   - type: textarea

@@ -13,6 +13,8 @@ start_timer:
             - integration: pura
               model: Pura 4
             - integration: pura
+              model: Pura Home
+            - integration: pura
               model: Pura Plus
             - integration: pura
               model: Pura Mini
