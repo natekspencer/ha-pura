@@ -16,6 +16,7 @@ PURA_MODEL_MAP = {
     "27": "Car Pro",
     "22": "Plus",
     "26": "Mini",
+    "35": "Home",
 }
 
 
