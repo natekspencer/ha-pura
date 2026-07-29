@@ -77,8 +77,8 @@ class PuraConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         except PuraAuthenticationError:
             errors["base"] = "invalid_auth"
-        except Exception as ex:  # pylint: disable=broad-except
-            _LOGGER.exception(ex)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unknown exception during authentication")
             errors["base"] = "unknown"
 
         if not errors:

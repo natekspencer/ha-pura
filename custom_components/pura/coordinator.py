@@ -73,7 +73,13 @@ class JitterBackoffMixin:
         backoff = min(2**self._consecutive_failures, max_backoff)
         new_interval = self._base_interval + backoff
         self.update_interval = timedelta(seconds=new_interval)
-        _LOGGER.debug(
+        if self._consecutive_failures < 2:
+            log_method = _LOGGER.debug
+        elif self._consecutive_failures < 5:
+            log_method = _LOGGER.warning
+        else:
+            log_method = _LOGGER.exception
+        log_method(
             "%s failed (attempt %d), next update in %ds",
             context,
             self._consecutive_failures,
@@ -106,7 +112,7 @@ class PuraDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
         )
         self.subscriber.start(self._async_handle_message)
 
-    def get_device(self, device_type: str | None, device_id: str) -> dict:
+    def get_device(self, device_type: str | None, device_id: str) -> dict[str, Any]:
         """Get device by type and id."""
         for dev_type, devices in self.devices.items():
             if device_type is not None and device_type != dev_type:
@@ -170,11 +176,6 @@ class PuraDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
 
         except Exception as err:  # pylint: disable=broad-except
             self._handle_failure("Pura API update")
-            _LOGGER.error(
-                "Exception while updating Pura data: %s",
-                err,
-                exc_info=True,
-            )
             raise UpdateFailed(err) from err
         return self.devices
 
@@ -213,9 +214,4 @@ class PuraCarFirmwareDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordin
             return result
         except Exception as err:  # pylint: disable=broad-except
             self._handle_failure("Pura car firmware API update")
-            _LOGGER.error(
-                "Exception while updating Pura car firmware data: %s",
-                err,
-                exc_info=True,
-            )
             raise UpdateFailed(err) from err
