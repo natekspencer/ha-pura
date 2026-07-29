@@ -92,5 +92,5 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
             self._attr_latest_version = ".".join(
                 firmware[key] for key in ("major", "minor", "patch")
             )
-        except Exception as ex:  # pylint: disable=broad-except
-            _LOGGER.exception(ex)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unknown exception getting latest firmware")
