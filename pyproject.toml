@@ -1,6 +1,7 @@
 [tool.ruff.lint]
 ignore = [
     "RUF012", # Mutable class attributes should be annotated with typing.ClassVar
+    "SIM102", # Use a single if statement instead of nested if statements
 ]
 
 [tool.ruff.lint.isort]
