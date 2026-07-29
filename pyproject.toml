@@ -1,3 +1,8 @@
+[tool.ruff.lint]
+ignore = [
+    "RUF012", # Mutable class attributes should be annotated with typing.ClassVar
+]
+
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 known-first-party = ["homeassistant", "tests"]
