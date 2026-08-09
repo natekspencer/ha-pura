@@ -17,6 +17,11 @@ PURA_MODEL_MAP = {
     "26": "Home Mini",
     "27": "Car Pro",
     "35": "Home v5",
+    # device type defaults
+    "car": "Car",
+    "mini": "Home Mini",
+    "plus": "Home Plus",
+    "wall": "Home",
 }
 
 
@@ -39,9 +44,8 @@ def determine_pura_model(data: dict[str, Any]) -> str | None:
     """Determine pura device model."""
     hwMajor = get_hardware_major_version(data)
     if not (model := PURA_MODEL_MAP.get(hwMajor)):
-        model = "Home"
-        if data["deviceType"] == "car":
-            model = "Car"
+        device_type = data["deviceType"]
+        model = PURA_MODEL_MAP.get(device_type, device_type.title())
     return f"Pura {model}"
 
 
