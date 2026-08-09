@@ -1,10 +1,12 @@
 // See https://aka.ms/vscode-remote/devcontainer.json for format details.
 {
   "name": "Home Assistant integration development",
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.13-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14-bookworm",
   "postCreateCommand": ".devcontainer/setup",
   "postAttachCommand": ".devcontainer/setup",
-  "forwardPorts": [8123],
+  "forwardPorts": [
+    8123
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -23,6 +25,9 @@
         "editor.formatOnPaste": false,
         "editor.formatOnSave": true,
         "editor.formatOnType": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "always"
+        },
         "files.trimTrailingWhitespace": true,
         "[python]": {
           "editor.defaultFormatter": "charliermarsh.ruff"
