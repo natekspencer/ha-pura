@@ -9,14 +9,14 @@ from typing import Any
 from homeassistant.util.dt import UTC
 
 PURA_MODEL_MAP = {
-    "2": "3",
-    "3": "3",
-    "4": "4",
     "1": "Car",
+    "2": "Home v3",
+    "3": "Home v3",
+    "4": "Home v4",
+    "22": "Home Plus",
+    "26": "Home Mini",
     "27": "Car Pro",
-    "22": "Plus",
-    "26": "Mini",
-    "35": "Home",
+    "35": "Home v5",
 }
 
 
@@ -38,7 +38,11 @@ def deep_merge(dict1: dict, dict2: dict) -> dict:
 def determine_pura_model(data: dict[str, Any]) -> str | None:
     """Determine pura device model."""
     hwMajor = get_hardware_major_version(data)
-    return f"Pura {PURA_MODEL_MAP.get(hwMajor) or hwMajor}"
+    if not (model := PURA_MODEL_MAP.get(hwMajor)):
+        model = "Home"
+        if data["deviceType"] == "car":
+            model = "Car"
+    return f"Pura {model}"
 
 
 def first_key_value(

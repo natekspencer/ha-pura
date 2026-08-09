@@ -37,7 +37,7 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
         self._attr_unique_id = f"{device_id}-{description.key}"
 
         device = self.get_device()
-        name = device["displayName"]["name"]
+        name = (device.get("displayName") or {}).get("name")
         self._attr_device_info = DeviceInfo(
             connections={
                 (
