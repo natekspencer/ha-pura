@@ -95,6 +95,13 @@ def get_device_id(data: dict[str, Any]) -> str:
     return data["deviceId"]
 
 
+def get_device_name(data: dict[str, Any]) -> str:
+    """Get the device name from a dictionary."""
+    if not (name := (data.get("displayName") or {}).get("name")):
+        return "Diffuser"
+    return name if "diffuser" in name.lower() else f"{name} Diffuser"
+
+
 def get_hardware_major_version(data: dict[str, Any]) -> str:
     """Get the major hardware version of a pura device."""
     return data["hwVersion"].split(".")[0]

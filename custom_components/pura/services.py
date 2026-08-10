@@ -22,6 +22,7 @@ from .helpers import (
     fragrance_remaining,
     fragrance_runtime as runtime,
     get_device_id,
+    get_device_name,
     has_fragrance,
 )
 
@@ -91,7 +92,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="invalid_device",
-                    translation_placeholders={"name": device["displayName"]["name"]},
+                    translation_placeholders={"name": get_device_name(device)},
                 )
 
             if not (fragrance_bays := [i for i in (1, 2) if has_fragrance(device, i)]):

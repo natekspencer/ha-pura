@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from . import PuraConfigEntry
 from .coordinator import PuraDataUpdateCoordinator
+from .helpers import get_device_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
         self._calendar = Calendar()
         self._calendar.events.extend(
             Event(
-                summary=f"{schedule['name']} - {device['displayName']['name']}",
+                summary=f"{schedule['name']} - {get_device_name(device)}",
                 start=_parse_datetime(now, schedule["start"], schedule["disableUntil"]),
                 end=_parse_datetime(now, schedule["end"], schedule["disableUntil"]),
                 description=f"Fragrance slot {schedule['bay']} ("

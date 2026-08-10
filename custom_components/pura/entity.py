@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import determine_pura_model
+from .helpers import determine_pura_model, get_device_name
 
 UPDATE_INTERVAL = 30
 
@@ -37,7 +37,6 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
         self._attr_unique_id = f"{device_id}-{description.key}"
 
         device = self.get_device()
-        name = (device.get("displayName") or {}).get("name")
         self._attr_device_info = DeviceInfo(
             connections={
                 (
@@ -50,9 +49,9 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
             identifiers={(DOMAIN, device_id)},
             manufacturer="Pura",
             model=determine_pura_model(device),
-            name=f"{name} Diffuser",
+            name=get_device_name(device),
             serial_number=device_id,
-            suggested_area=name if device_type in ("wall", "plus") else None,
+            suggested_area=(device.get("roomProfile") or {}).get("name"),
             sw_version=device["fwVersion"],
             hw_version=device["hwVersion"],
         )
