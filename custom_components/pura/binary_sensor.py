@@ -17,7 +17,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
 from .entity import PuraEntity
-from .helpers import get_device_id
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -33,7 +32,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraBinarySensorEntityDescription, ...]] = 
             key="low_fragrance",
             name="Low fragrance",
             device_class=BinarySensorDeviceClass.PROBLEM,
-            on_fn=lambda data: (data.get("bay1") or {}).get("lowFragrance", False),
+            on_fn=lambda data: (data.get("bay1") or {}).get("lowFragrance"),
         ),
     ),
     ("wall", "plus", "mini"): (
@@ -56,9 +55,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if new_devices:
@@ -87,6 +85,6 @@ class PuraBinarySensorEntity(PuraEntity, BinarySensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
         return self.entity_description.on_fn(self.get_device())

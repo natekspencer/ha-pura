@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import functools
 
+from pypura.utils import has_fragrance, parse_intensity
+
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -15,9 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .entity import PuraEntity
-from .helpers import get_device_id, has_fragrance, parse_intensity
 
-INTENSITY_MAP = {"subtle": 3, "medium": 6, "strong": 10}
+INTENSITY_MAP = {"subtle": 1, "light": 3, "medium": 5, "pronounced": 7, "strong": 10}
 
 
 async def async_setup_entry(
@@ -29,9 +30,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if new_devices:
@@ -82,7 +82,7 @@ SELECT_DESCRIPTIONS = {
             translation_key="intensity",
             entity_category=EntityCategory.CONFIG,
             current_fn=lambda data: parse_intensity(data["intensity"]),
-            options=["off", "subtle", "medium", "strong"],
+            options=["off"] + list(INTENSITY_MAP),
             select_fn=lambda select, option: functools.partial(
                 select.coordinator.api.set_intensity,
                 select._device_id,

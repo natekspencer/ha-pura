@@ -18,7 +18,6 @@ from homeassistant.util.color import color_rgb_to_hex, rgb_hex_to_rgb_list
 
 from . import PuraConfigEntry
 from .entity import PuraEntity
-from .helpers import get_device_id
 
 LIGHT_DESCRIPTION = LightEntityDescription(key="nightlight", name="Nightlight")
 
@@ -32,9 +31,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if new_devices:

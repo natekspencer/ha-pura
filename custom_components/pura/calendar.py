@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import logging
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from ical.calendar import Calendar
 from ical.event import Event
 from ical.types import Recur
+from pypura.utils import dig, get_device_name, get_fragrance_name, parse_intensity
 
 from homeassistant.components.calendar import (
     CalendarEntity,
@@ -21,7 +24,6 @@ from homeassistant.util import dt as dt_util
 
 from . import PuraConfigEntry
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import get_device_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,26 +94,29 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
         self._calendar = Calendar()
         self._calendar.events.extend(
             Event(
-                summary=f"{schedule['name']} - {get_device_name(device)}",
-                start=_parse_datetime(now, schedule["start"], schedule["disableUntil"]),
-                end=_parse_datetime(now, schedule["end"], schedule["disableUntil"]),
-                description=f"Fragrance slot {schedule['bay']} ("
-                + (
-                    bay.get("fragrance", {}).get("name", "Unknown")
-                    if (bay := device.get(f"bay{schedule['bay']}"))
-                    else "Empty"
-                )
-                + f") with {schedule['intensity']} intensity",
+                summary=f"{get_device_name(device)}: {schedule.get('name')}",
+                description=(
+                    f"Fragrance: {get_fragrance_name(device, schedule.get('bay'))} (slot {schedule.get('bay')})\n"
+                    f"Intensity: {parse_intensity(schedule.get('intensity'))} (level {schedule.get('intensity')})\n"
+                    f"Light: {'on' if dig(schedule, 'nightlight.active') else 'off'}"
+                ),
                 uid=schedule["id"],
                 rrule=Recur.from_rrule(
                     f"FREQ=WEEKLY;BYDAY={','.join(day[:2].upper() for day in schedule['days'] if schedule['days'][day])};INTERVAL=1"
                 ),
+                **_parse_start_end(
+                    now,
+                    schedule.get("start"),
+                    duration=schedule.get("duration"),
+                    end=schedule.get("end"),
+                    disable_until=schedule.get("disableUntil"),
+                    tz=dig(device, "deviceLocation.timezone"),
+                ),
             )
-            for device_type, devices in self.coordinator.devices.items()
-            if device_type in ("wall", "plus", "mini")
-            for device in devices
+            for device in self.coordinator.devices.values()
+            if device.get("modelType") in ("wall", "plus", "mini")
             for schedule in device.get("schedules", [])
-            if schedule["disableUntil"] != -1
+            if schedule.get("disableUntil") != -1
         )
 
         self.async_write_ha_state()
@@ -122,19 +127,46 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
         await super().async_added_to_hass()
 
 
+def _parse_start_end(
+    now: datetime,
+    start: str | int,
+    *,
+    duration: int | None = None,
+    end: str | None = None,
+    disable_until: int | None = None,
+    tz: str | None = None,
+) -> dict[str, Any]:
+    """Parse a start and end datetime for a schedule."""
+    tzinfo = ZoneInfo(tz) if tz else now.tzinfo
+    start_dt = _parse_datetime(now, start, disable_until=disable_until, tz=tzinfo)
+    end_dt = start_dt
+    if duration:
+        end_dt = start_dt + timedelta(minutes=duration)
+    elif end:
+        end_dt = _parse_datetime(start_dt, end)
+    return {"start": start_dt, "end": end_dt}
+
+
 def _parse_datetime(
-    now: datetime, time_str: str, disable_until: int | None = None
+    now: datetime,
+    time_value: str | int,
+    *,
+    disable_until: int | None = None,
+    tz: ZoneInfo | None = None,
 ) -> datetime | None:
     """Parse datetime."""
-    _date = dt_util.dt.datetime.combine(now, _parse_time(time_str), now.tzinfo)
-    if disable_until and _date <= datetime.fromtimestamp(disable_until, now.tzinfo):
+    tz = tz or now.tzinfo
+    _date = dt_util.dt.datetime.combine(now, _parse_time(time_value), tz)
+    if disable_until and _date <= datetime.fromtimestamp(disable_until, tz):
         _date += ONE_DAY
     return _date
 
 
-def _parse_time(time_str: str) -> dt_util.dt.time | None:
+def _parse_time(time_value: str | int) -> time | None:
     """Parse time."""
-    return dt_util.parse_time(f"{time_str[:2]}:{time_str[2:]}")
+    if isinstance(time_value, int):
+        time_value = f"{time_value:04d}"
+    return dt_util.parse_time(f"{time_value[:2]}:{time_value[2:]}")
 
 
 def _get_calendar_event(event: Event) -> CalendarEvent:

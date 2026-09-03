@@ -5,6 +5,12 @@ from __future__ import annotations
 import asyncio
 import functools
 
+from pypura.utils import (
+    get_device_name,
+    get_fragrance_remaining,
+    get_fragrance_runtime as runtime,
+    has_fragrance,
+)
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -18,13 +24,6 @@ from homeassistant.helpers.service import async_extract_entity_ids
 
 from .const import ATTR_DURATION, ATTR_INTENSITY, ATTR_SLOT, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import (
-    fragrance_remaining,
-    fragrance_runtime as runtime,
-    get_device_id,
-    get_device_name,
-    has_fragrance,
-)
 
 SERVICE_START_TIMER = "start_timer"
 SERVICE_TIMER_SCHEMA = vol.All(
@@ -88,7 +87,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
                     translation_placeholders={"name": device_id},
                 )
 
-            if device["deviceType"] == "car":
+            if device["modelType"] == "car":
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="invalid_device",
@@ -104,8 +103,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
                 if len(fragrance_bays) == 1:
                     slot = fragrance_bays[0]
                 else:
-                    slot1_remaining = fragrance_remaining(device, 1) or 0
-                    slot2_remaining = fragrance_remaining(device, 2) or 0
+                    slot1_remaining = get_fragrance_remaining(device, 1) or 0
+                    slot2_remaining = get_fragrance_remaining(device, 2) or 0
                     if slot1_remaining > slot2_remaining:
                         slot = 1
                     elif slot2_remaining > slot1_remaining:
@@ -121,7 +120,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
             _set_timer = functools.partial(
                 coordinator.api.set_timer,
-                get_device_id(device),
+                device_id,
                 bay=slot,
                 intensity=call.data.get(ATTR_INTENSITY),
                 end=call.data.get(ATTR_DURATION),

@@ -5,7 +5,6 @@ PyTurboJPEG
 
 # Integration
 pypura
-deepdiff
 ical
 
 # Development

@@ -19,7 +19,6 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_ID_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import get_device_id
 from .services import async_setup_services
 
 type PuraConfigEntry = ConfigEntry[PuraDataUpdateCoordinator]
@@ -99,7 +98,6 @@ async def async_remove_config_entry_device(
         identifier
         for identifier in device_entry.identifiers
         if identifier[0] == DOMAIN
-        for devices in entry.runtime_data.devices.values()
-        for device in devices
-        if identifier[1] == get_device_id(device)
+        for device_id in entry.runtime_data.devices
+        if identifier[1] == device_id
     )
