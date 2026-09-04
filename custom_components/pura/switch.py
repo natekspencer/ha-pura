@@ -18,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
 from .entity import PuraEntity
-from .helpers import get_device_id, get_hardware_major_version
+from .helpers import get_hardware_major_version
 
 
 def build_away_mode_json(entity: PuraSwitchEntity, away_mode: bool) -> dict:
@@ -45,9 +45,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if not new_devices:

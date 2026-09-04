@@ -52,7 +52,9 @@
         "state": {
           "off": "Off",
           "subtle": "Subtle",
+          "light": "Light",
           "medium": "Medium",
+          "pronounced": "Pronounced",
           "strong": "Strong"
         }
       }

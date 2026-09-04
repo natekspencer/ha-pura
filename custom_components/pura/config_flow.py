@@ -71,6 +71,7 @@ class PuraConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
 
         pura = Pura(username=user_input[CONF_USERNAME])
+        _LOGGER.debug("Logging in")
         try:
             await self.hass.async_add_executor_job(
                 pura.authenticate, user_input[CONF_PASSWORD]

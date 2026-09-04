@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pypura.utils import dig, get_device_name, get_model_name
+
 from homeassistant.helpers.device_registry import (
     CONNECTION_BLUETOOTH,
     CONNECTION_NETWORK_MAC,
@@ -12,7 +14,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import determine_pura_model
 
 UPDATE_INTERVAL = 30
 
@@ -37,7 +38,6 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
         self._attr_unique_id = f"{device_id}-{description.key}"
 
         device = self.get_device()
-        name = device["displayName"]["name"]
         self._attr_device_info = DeviceInfo(
             connections={
                 (
@@ -49,12 +49,12 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
             },
             identifiers={(DOMAIN, device_id)},
             manufacturer="Pura",
-            model=determine_pura_model(device),
-            name=f"{name} Diffuser",
+            model=get_model_name(device),
+            name=get_device_name(device),
             serial_number=device_id,
-            suggested_area=name if device_type in ("wall", "plus") else None,
-            sw_version=device["fwVersion"],
-            hw_version=device["hwVersion"],
+            suggested_area=dig(device, "roomProfile.name"),
+            sw_version=device.get("fwVersion"),
+            hw_version=device.get("hwVersion"),
         )
 
     def get_device(self) -> dict:

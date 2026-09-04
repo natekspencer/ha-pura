@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-import copy
 from datetime import timedelta
 import logging
 import random
 from typing import Any
 
-from deepdiff import DeepDiff
-from pypura import Pura
+from pypura import Pura, PuraAuthenticationError
+from pypura.utils import merge_websocket_update
 from pypura.ws_subscriber import WebSocketSubscriber
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    ConfigEntryAuthFailed,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import (
     BACKOFF_MULTIPLIER,
@@ -25,7 +28,6 @@ from .const import (
     MAX_JITTER,
     MIN_MAX_BACKOFF,
 )
-from .helpers import deep_merge, get_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,7 +89,9 @@ class JitterBackoffMixin:
         )
 
 
-class PuraDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
+class PuraDataUpdateCoordinator(
+    JitterBackoffMixin, DataUpdateCoordinator[dict[str, dict[str, Any]]]
+):
     """Class to manage fetching data from the API."""
 
     def __init__(
@@ -95,7 +99,7 @@ class PuraDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
     ) -> None:
         """Initialize."""
         self.api = client
-        self.devices: dict[str, list[dict[str, Any]]] = {}
+        self.devices: dict[str, dict[str, Any]] = {}
 
         self._init_jitter_backoff(config_entry)
 
@@ -114,65 +118,28 @@ class PuraDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
 
     def get_device(self, device_type: str | None, device_id: str) -> dict[str, Any]:
         """Get device by type and id."""
-        for dev_type, devices in self.devices.items():
-            if device_type is not None and device_type != dev_type:
-                continue
-            for device in devices:
-                if device_id == get_device_id(device):
-                    return {"deviceType": dev_type} | device
+        device = self.devices.get(device_id)
+        if device and (device_type is None or device.get("modelType") == device_type):
+            return device
 
         raise LookupError(f"Device {device_id!r} not found")
 
-    async def _async_handle_message(self, data: dict) -> None:
+    async def _async_handle_message(self, update: dict[str, Any]) -> None:
         """Handle a pushed data message."""
-        event_type = data.get("eventType")
-        record_type = data.get("recordType")
-        search = (d for d in self.devices["wall"] if d["deviceId"] == data["deviceId"])
-        device = next(search, None)
-        handled = False
-        if device:
-            if event_type == "MODIFY" and record_type == "DEVICE":
-                old_device = copy.deepcopy(device)
-                deep_merge(device, data.get("deviceRecord"))
-                diff = DeepDiff(
-                    old_device,
-                    device,
-                    ignore_order=True,
-                    report_repetition=True,
-                    verbose_level=2,
-                )
-                _LOGGER.debug("Devices updated: %s", diff if diff else "no changes")
-                handled = True
-            elif record_type == "TIMER":
-                if event_type == "REMOVE":
-                    _LOGGER.debug("Removed timer from device")
-                    device["timer"] = None
-                    handled = True
-                elif event_type in ("INSERT", "MODIFY"):
-                    _LOGGER.debug("%s timer on device", event_type.capitalize())
-                    device["timer"] = data.get("timerRecord")
-                    handled = True
-
-        if handled:
+        if merge_websocket_update(self.devices, update):
             self.async_set_updated_data(self.devices)
-        else:
-            _LOGGER.warning("Received unknown update: %s", data)
 
-    async def _async_update_data(self) -> dict[str, list[dict[str, Any]]]:
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Update data via library, refresh token if necessary."""
         try:
             if devices := await self.hass.async_add_executor_job(self.api.get_devices):
-                diff = DeepDiff(
-                    self.devices,
-                    devices,
-                    ignore_order=True,
-                    report_repetition=True,
-                    verbose_level=2,
-                )
-                _LOGGER.debug("Devices updated: %s", diff if diff else "no changes")
+                _LOGGER.debug("Devices updated")
                 self.devices = devices
 
             self._handle_success()
+
+        except PuraAuthenticationError as err:
+            raise ConfigEntryAuthFailed from err
 
         except Exception as err:  # pylint: disable=broad-except
             self._handle_failure("Pura API update")

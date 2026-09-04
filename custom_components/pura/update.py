@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
+from pypura.utils import get_model_name
+
 from homeassistant.components.update import (
     UpdateDeviceClass,
     UpdateEntity,
@@ -15,7 +17,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
 from .entity import PuraEntity
-from .helpers import determine_pura_model, get_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,9 +40,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if new_devices:
@@ -79,7 +79,7 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
 
     async def async_update(self) -> None:
         """Update the entity."""
-        model = determine_pura_model(self.get_device()) or ""
+        model = get_model_name(self.get_device()) or ""
         version = "v2" if "Pro" in model else "v1"
         try:
             details: str = await self.hass.async_add_executor_job(

@@ -11,7 +11,9 @@
         "default": "mdi:signal-cellular-outline",
         "state": {
           "subtle": "mdi:signal-cellular-1",
+          "light": "mdi:signal-cellular-2",
           "medium": "mdi:signal-cellular-2",
+          "pronounced": "mdi:signal-cellular-2",
           "strong": "mdi:signal-cellular-3"
         }
       }

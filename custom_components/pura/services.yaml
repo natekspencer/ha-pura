@@ -9,22 +9,23 @@ start_timer:
         area:
           device: &pura_models # Define model list once for reuse
             - integration: pura
-              model: Pura 3
+              model: Home v3
             - integration: pura
-              model: Pura 4
+              model: Home v4
             - integration: pura
-              model: Pura Home
+              model: Home v5
             - integration: pura
-              model: Pura Plus
+              model: Home Mini
             - integration: pura
-              model: Pura Mini
+              model: Home Plus
+            - integration: pura
+              model: Home
           multiple: true
     device_id:
       required: false
       selector:
         device:
-          filter:
-            *pura_models
+          filter: *pura_models
           multiple: true
     slot:
       required: false

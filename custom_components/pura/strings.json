@@ -52,7 +52,9 @@
         "state": {
           "off": "[%key:common::state::off%]",
           "subtle": "Subtle",
+          "light": "Light",
           "medium": "Medium",
+          "pronounced": "Pronounced",
           "strong": "Strong"
         }
       }

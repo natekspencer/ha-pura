@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from pypura.utils import (
+    get_fragrance_name,
+    get_fragrance_remaining,
+    get_fragrance_runtime,
+    has_fragrance,
+)
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -20,13 +27,6 @@ from homeassistant.util.dt import UTC, utc_from_timestamp
 
 from . import PuraConfigEntry
 from .entity import PuraEntity
-from .helpers import (
-    fragrance_name,
-    fragrance_remaining,
-    fragrance_runtime,
-    get_device_id,
-    has_fragrance,
-)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -63,7 +63,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: fragrance_name(data, 1),
+            value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
             key="fragrance_remaining",
@@ -74,7 +74,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: fragrance_remaining(data, 1),
+            value_fn=lambda data: get_fragrance_remaining(data, 1),
         ),
         PuraSensorEntityDescription(
             key="runtime",
@@ -94,10 +94,10 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="active_fragrance",
             icon="mdi:scent",
             value_fn=lambda data: (
-                fragrance_name(data, 1)
+                get_fragrance_name(data, 1)
                 if (bay := data["bay1"]) and bay["activeAt"]
                 else (
-                    fragrance_name(data, 2)
+                    get_fragrance_name(data, 2)
                     if (bay := data["bay2"]) and bay["activeAt"]
                     else "none"
                 )
@@ -110,7 +110,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: fragrance_name(data, 1),
+            value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
             key="bay_1_fragrance_remaining",
@@ -122,7 +122,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: fragrance_remaining(data, 1),
+            value_fn=lambda data: get_fragrance_remaining(data, 1),
         ),
         PuraSensorEntityDescription(
             key="bay_1_runtime",
@@ -134,7 +134,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.TOTAL_INCREASING,
             suggested_unit_of_measurement=UnitOfTime.HOURS,
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: fragrance_runtime(data, 1),
+            value_fn=lambda data: get_fragrance_runtime(data, 1),
         ),
         PuraSensorEntityDescription(
             key="bay_1_installed",
@@ -153,7 +153,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: fragrance_name(data, 2),
+            value_fn=lambda data: get_fragrance_name(data, 2),
         ),
         PuraSensorEntityDescription(
             key="bay_2_fragrance_remaining",
@@ -165,7 +165,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
             available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: fragrance_remaining(data, 2),
+            value_fn=lambda data: get_fragrance_remaining(data, 2),
         ),
         PuraSensorEntityDescription(
             key="bay_2_runtime",
@@ -177,7 +177,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.TOTAL_INCREASING,
             suggested_unit_of_measurement=UnitOfTime.HOURS,
             available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: fragrance_runtime(data, 2),
+            value_fn=lambda data: get_fragrance_runtime(data, 2),
         ),
         PuraSensorEntityDescription(
             key="bay_2_installed",
@@ -245,9 +245,8 @@ async def async_setup_entry(
 
     def _check_devices() -> None:
         new_devices = {
-            (device_type, get_device_id(device))
-            for device_type, devices in coordinator.data.items()
-            for device in devices
+            (device.get("modelType", ""), device_id)
+            for device_id, device in coordinator.data.items()
         } - known_devices
 
         if new_devices:
