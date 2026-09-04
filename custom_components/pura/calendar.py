@@ -95,11 +95,7 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
         self._calendar.events.extend(
             Event(
                 summary=f"{get_device_name(device)}: {schedule.get('name')}",
-                description=(
-                    f"Fragrance: {get_fragrance_name(device, schedule.get('bay'))} (slot {schedule.get('bay')})\n"
-                    f"Intensity: {parse_intensity(schedule.get('intensity'))} (level {schedule.get('intensity')})\n"
-                    f"Light: {'on' if dig(schedule, 'nightlight.active') else 'off'}"
-                ),
+                description=_get_schedule_description(device, schedule),
                 uid=schedule["id"],
                 rrule=Recur.from_rrule(
                     f"FREQ=WEEKLY;BYDAY={','.join(day[:2].upper() for day in schedule['days'] if schedule['days'][day])};INTERVAL=1"
@@ -178,3 +174,18 @@ def _get_calendar_event(event: Event) -> CalendarEvent:
         description=event.description,
         rrule=event.rrule.as_rrule_str(),
     )
+
+
+def _get_schedule_description(device: dict[str, Any], schedule: dict[str, Any]) -> str:
+    """Get a pura schedule description for a calendar event."""
+    bay = schedule.get("bay")
+    description = f"Fragrance: {get_fragrance_name(device, bay)} (slot {bay})\n"
+    intensity = schedule.get("intensity")
+    description += f"Intensity: {parse_intensity(intensity)} (level {intensity})"
+    if nightlight := schedule.get("nightlight"):
+        light_on = nightlight.get("active")
+        description += f"\nLight: {'on' if light_on else 'off'}"
+        if light_on:
+            bri = nightlight.get("brightness", 0) * 10
+            description += f" (brightness: {bri}%)"
+    return description
