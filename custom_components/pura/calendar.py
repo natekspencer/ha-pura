@@ -134,26 +134,23 @@ def _parse_start_end(
 ) -> dict[str, Any]:
     """Parse a start and end datetime for a schedule."""
     tzinfo = ZoneInfo(tz) if tz else now.tzinfo
-    start_dt = _parse_datetime(now, start, disable_until=disable_until, tz=tzinfo)
+    now = now.astimezone(tzinfo)
+    start_dt = _parse_datetime(now, start, disable_until=disable_until)
     end_dt = start_dt
     if duration:
-        end_dt = start_dt + timedelta(minutes=duration)
+        time_duration = timedelta(minutes=duration)
+        end_dt = (start_dt.astimezone(dt_util.UTC) + time_duration).astimezone(tzinfo)
     elif end:
         end_dt = _parse_datetime(start_dt, end)
     return {"start": start_dt, "end": end_dt}
 
 
 def _parse_datetime(
-    now: datetime,
-    time_value: str | int,
-    *,
-    disable_until: int | None = None,
-    tz: ZoneInfo | None = None,
+    now: datetime, time_value: str | int, *, disable_until: int | None = None
 ) -> datetime | None:
     """Parse datetime."""
-    tz = tz or now.tzinfo
-    _date = dt_util.dt.datetime.combine(now, _parse_time(time_value), tz)
-    if disable_until and _date <= datetime.fromtimestamp(disable_until, tz):
+    _date = dt_util.dt.datetime.combine(now, _parse_time(time_value), now.tzinfo)
+    if disable_until and _date <= datetime.fromtimestamp(disable_until, now.tzinfo):
         _date += ONE_DAY
     return _date
 
