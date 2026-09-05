@@ -175,8 +175,11 @@ def _get_calendar_event(event: Event) -> CalendarEvent:
 
 def _get_schedule_description(device: dict[str, Any], schedule: dict[str, Any]) -> str:
     """Get a pura schedule description for a calendar event."""
-    bay = schedule.get("bay")
-    description = f"Fragrance: {get_fragrance_name(device, bay)} (slot {bay})\n"
+    if device.get("diffusionMode") == "oscillation-multi-bay":
+        description = "Auto-alternate fragrances: ON\n"
+    else:
+        bay = schedule.get("bay")
+        description = f"Fragrance: {get_fragrance_name(device, bay)} (slot {bay})\n"
     intensity = schedule.get("intensity")
     description += f"Intensity: {parse_intensity(intensity)} (level {intensity})"
     if nightlight := schedule.get("nightlight"):

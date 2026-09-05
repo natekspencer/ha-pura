@@ -87,12 +87,7 @@ SELECT_DESCRIPTIONS = {
                 select.coordinator.api.set_intensity,
                 select._device_id,
                 bay=select._intensity_data["bay"],
-                controller=(
-                    str(select._intensity_data["number"])
-                    if (controller := select._intensity_data["controller"])
-                    == "schedule"
-                    else controller
-                ),
+                controller=select._intensity_data["controller"],
                 intensity=INTENSITY_MAP[option],
             ),
         ),

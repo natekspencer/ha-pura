@@ -81,11 +81,13 @@ class PuraLightEntity(PuraEntity, LightEntity):
         """Get the nightlight data."""
         device = self.get_device()
         data: dict | None = None
-        if (controller := device["controller"]).isnumeric():
-            for schedule in device["schedules"]:
-                if str(schedule["number"]) == controller:
+        if (controller := device["controller"]) not in ("default", "timer"):
+            for schedule in device.get("schedules") or []:
+                if schedule.get("id") == controller:
                     data = schedule["nightlight"]
                     break
+            else:
+                controller = "default"
         if not data:
             data = device["deviceDefaults"]["nightlight"]
         return data | {"controller": str(controller)}

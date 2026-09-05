@@ -67,10 +67,10 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
         device = self.get_device()
         if (controller := device["controller"]) == "timer" and device[controller]:
             return device[controller] | {"controller": controller}
-        if controller.isnumeric():
-            for schedule in device["schedules"]:
-                if str(schedule["number"]) == controller:
-                    return schedule | {"controller": "schedule"}
+        elif controller != "default":
+            for schedule in device.get("schedules") or []:
+                if schedule.get("id") == controller:
+                    return schedule | {"controller": controller}
         bay = 0
         if (data := device["bay1"]) and data["activeAt"]:
             bay = 1
