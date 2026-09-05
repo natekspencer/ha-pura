@@ -197,7 +197,8 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             value_fn=lambda data: (
                 "schedule"
-                if (controller := data["controller"]).isnumeric()
+                if (controller := data["controller"]) not in ("default", "timer")
+                and controller in {s.get("id") for s in data.get("schedules") or []}
                 else controller
             ),
         ),
