@@ -76,7 +76,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
     firmware_coordinator = PuraFirmwareDataUpdateCoordinator(
         hass, config_entry=entry, device_coordinator=coordinator
     )
-    await firmware_coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = PuraIntegrationData(coordinator, firmware_coordinator)
 

@@ -108,7 +108,8 @@ class PuraDataUpdateCoordinator(
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            config_entry=config_entry,
+            name=f"{DOMAIN.capitalize()} device",
             update_interval=self._get_interval_with_jitter(),
         )
 
@@ -116,7 +117,6 @@ class PuraDataUpdateCoordinator(
             session=async_get_clientsession(hass),
             token=client.get_tokens().get("id_token"),
         )
-        self.subscriber.start(self._async_handle_message)
 
         self.previous_devices: set[str] = set()
 
@@ -173,6 +173,10 @@ class PuraDataUpdateCoordinator(
             self._check_stale_devices()
             self._handle_success()
 
+            if not self.subscriber.is_running:
+                self.subscriber.token = self.api.get_tokens().get("id_token")
+                self.subscriber.start(self._async_handle_message)
+
         except PuraAuthenticationError as err:
             raise ConfigEntryAuthFailed from err
 
@@ -182,7 +186,9 @@ class PuraDataUpdateCoordinator(
         return self.devices
 
 
-class PuraFirmwareDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
+class PuraFirmwareDataUpdateCoordinator(
+    JitterBackoffMixin, DataUpdateCoordinator[dict[str, dict[str, Any]]]
+):
     """Class to manage fetching data from the API."""
 
     def __init__(
@@ -201,13 +207,14 @@ class PuraFirmwareDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinato
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            config_entry=config_entry,
+            name=f"{DOMAIN.capitalize()} firmware",
             update_interval=self._get_interval_with_jitter(),
         )
 
         self._semaphore = asyncio.Semaphore(4)
 
-    async def _async_update_data(self) -> dict[str, str]:
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Update data via library, refresh token if necessary."""
         device_ids = list(self.device_coordinator.data)
         results = await asyncio.gather(
@@ -220,10 +227,10 @@ class PuraFirmwareDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinato
             return_exceptions=True,
         )
 
-        data: dict[str, dict[str, Any]] = {}
+        data = self.data or {}
         for device_id, result in zip(device_ids, results):
             if isinstance(result, Exception):
-                _LOGGER.debug("Firmware check failed for %s: %s", device_id, result)
+                _LOGGER.warning("Firmware check failed for %s: %s", device_id, result)
                 continue
             data[device_id] = result
         return data

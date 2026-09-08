@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.update import (
     UpdateDeviceClass,
@@ -12,7 +12,7 @@ from homeassistant.components.update import (
     UpdateEntityDescription,
     UpdateEntityFeature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
@@ -83,42 +83,45 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
         else:
             self._attr_supported_features |= UpdateEntityFeature.INSTALL
 
-    @property
-    def in_progress(self) -> bool | None:
-        """Update installation progress."""
-        if ota := (self.get_device().get("ota") or {}):
-            return ota.get("status") not in ("Finished")
-        return None
+        # explicitly add this entity to the device coordinator listeners
+        coordinator.device_coordinator.async_add_listener(
+            self._handle_coordinator_update
+        )
 
-    @property
-    def installed_version(self) -> str | None:
-        """Version installed and in use."""
+    @callback
+    @override
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         device = self.get_device()
+
+        in_progress = False
+        if ota := (device.get("ota") or {}):
+            in_progress = ota.get("status") not in ("Finished")
+        self._attr_in_progress = in_progress
+
+        installed_version: str | None = None
         if self._device_type == "car":  # car uses fwVersion
-            return str(device.get(self.entity_description.lookup_key))
-        if (ota_version := device.get("otaVer")) is not None:
-            return str(ota_version)
-        return None
+            installed_version = str(device.get(self.entity_description.lookup_key))
+        elif (ota_version := device.get("otaVer")) is not None:
+            installed_version = str(ota_version)
+        self._attr_installed_version = installed_version
 
-    @property
-    def latest_version(self) -> str | None:
-        """Latest version available for install."""
-        if not (details := self.coordinator.data.get(self._device_id)):
-            return
+        latest_version: str | None = None
+        if details := (self.coordinator.data or {}).get(self._device_id):
+            if self._device_type == "car":
+                latest_version = ".".join(
+                    str(details.get(key)) for key in ("major", "minor", "patch")
+                )
+            else:
+                latest_version = str(details.get("version"))
+        self._attr_latest_version = latest_version
 
-        if self._device_type == "car":
-            return ".".join(
-                str(details.get(key)) for key in ("major", "minor", "patch")
-            )
-
-        return str(details.get("version"))
-
-    @property
-    def update_percentage(self) -> int | float | None:
-        """Update installation progress."""
-        ota = self.get_device().get("ota") or {}
+        update_percentage: int | float | None = None
         if "percent" in ota:
-            return ota.get("percent")
+            update_percentage = ota["percent"]
+        self._attr_update_percentage = update_percentage
+
+        super()._handle_coordinator_update()
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
