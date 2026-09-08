@@ -38,7 +38,9 @@ async def async_setup_entry(
     """Set up Pura schedule calendar using config entry."""
     entities = [
         PuraCalendarEntity(
-            coordinator=entry.runtime_data, description=SCHEDULE, entry=entry
+            coordinator=entry.runtime_data.coordinator,
+            description=SCHEDULE,
+            entry=entry,
         )
     ]
     async_add_entities(entities)

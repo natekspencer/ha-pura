@@ -13,19 +13,21 @@ from homeassistant.helpers.entity import DeviceInfo, EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import PuraDataUpdateCoordinator
+from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 
 UPDATE_INTERVAL = 30
 
 
-class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
+class PuraEntity(
+    CoordinatorEntity[PuraDataUpdateCoordinator | PuraFirmwareDataUpdateCoordinator]
+):
     """Base class for Pura entities."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: PuraDataUpdateCoordinator,
+        coordinator: PuraDataUpdateCoordinator | PuraFirmwareDataUpdateCoordinator,
         description: EntityDescription,
         device_type: str,
         device_id: str,
@@ -38,12 +40,15 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
         self._attr_unique_id = f"{device_id}-{description.key}"
 
         device = self.get_device()
+        fw_version = device.get("fwVersion")
+        if ota_version := device.get("otaVer"):
+            fw_version = f"{fw_version} ({ota_version})"
         self._attr_device_info = DeviceInfo(
             connections={
                 (
-                    CONNECTION_NETWORK_MAC
-                    if device_type in ("wall", "plus")
-                    else CONNECTION_BLUETOOTH,
+                    CONNECTION_BLUETOOTH
+                    if device_type == "car"
+                    else CONNECTION_NETWORK_MAC,
                     format_mac(device_id),
                 )
             },
@@ -53,13 +58,16 @@ class PuraEntity(CoordinatorEntity[PuraDataUpdateCoordinator]):
             name=get_device_name(device),
             serial_number=device_id,
             suggested_area=dig(device, "roomProfile.name"),
-            sw_version=device.get("fwVersion"),
+            sw_version=fw_version,
             hw_version=device.get("hwVersion"),
         )
 
     def get_device(self) -> dict:
         """Get the device from the coordinator."""
-        return self.coordinator.get_device(self._device_type, self._device_id)
+        coordinator = self.coordinator
+        if isinstance(coordinator, PuraFirmwareDataUpdateCoordinator):
+            coordinator = coordinator.device_coordinator
+        return coordinator.get_device(self._device_type, self._device_id)
 
     @property
     def _intensity_data(self) -> dict:

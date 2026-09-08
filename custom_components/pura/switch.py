@@ -40,22 +40,21 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PuraConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Pura switchs using config entry."""
-    coordinator = entry.runtime_data
-    known_devices: set[tuple[str, str]] = set()
+    coordinator = entry.runtime_data.coordinator
+    added_devices: set[tuple[str, str]] = set()
 
     def _check_devices() -> None:
-        new_devices = {
-            (device.get("modelType", ""), device_id)
-            for device_id, device in coordinator.data.items()
-        } - known_devices
+        nonlocal added_devices
+        current_devices = coordinator.current_devices_with_type
+        new_devices = current_devices - added_devices
+        added_devices = current_devices
 
         if not new_devices:
             return
 
-        known_devices.update(new_devices)
         entities: list[PuraSwitchEntity] = []
 
-        for device_type, device_id in new_devices:
+        for device_id, device_type in new_devices:
             device = coordinator.get_device(device_type, device_id)
             hardware_version = get_hardware_major_version(device)
 

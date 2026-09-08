@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pypura import Pura, PuraAuthenticationError
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,10 +20,10 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_ID_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
-from .coordinator import PuraDataUpdateCoordinator
+from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 from .services import async_setup_services
 
-type PuraConfigEntry = ConfigEntry[PuraDataUpdateCoordinator]
+type PuraConfigEntry = ConfigEntry[PuraIntegrationData]
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
@@ -34,6 +36,14 @@ PLATFORMS = [
 ]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+@dataclass
+class PuraIntegrationData:
+    """Runtime data for a config entry."""
+
+    coordinator: PuraDataUpdateCoordinator
+    firmware_coordinator: PuraFirmwareDataUpdateCoordinator
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -63,7 +73,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
     coordinator = PuraDataUpdateCoordinator(hass, client=client, config_entry=entry)
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = coordinator
+    firmware_coordinator = PuraFirmwareDataUpdateCoordinator(
+        hass, config_entry=entry, device_coordinator=coordinator
+    )
+    await firmware_coordinator.async_config_entry_first_refresh()
+
+    entry.runtime_data = PuraIntegrationData(coordinator, firmware_coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -98,6 +113,6 @@ async def async_remove_config_entry_device(
         identifier
         for identifier in device_entry.identifiers
         if identifier[0] == DOMAIN
-        for device_id in entry.runtime_data.devices
+        for device_id in entry.runtime_data.coordinator.devices
         if identifier[1] == device_id
     )

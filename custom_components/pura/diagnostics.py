@@ -26,4 +26,4 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: PuraConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    return async_redact_data(entry.runtime_data.data, TO_REDACT)
+    return async_redact_data(entry.runtime_data.coordinator.data, TO_REDACT)

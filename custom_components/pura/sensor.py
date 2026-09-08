@@ -241,17 +241,13 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PuraConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Pura sensors using config entry."""
-    coordinator = entry.runtime_data
-    known_devices: set[tuple[str, str]] = set()
+    coordinator = entry.runtime_data.coordinator
+    added_devices: set[tuple[str, str]] = set()
 
     def _check_devices() -> None:
-        new_devices = {
-            (device.get("modelType", ""), device_id)
-            for device_id, device in coordinator.data.items()
-        } - known_devices
-
-        if new_devices:
-            known_devices.update(new_devices)
+        nonlocal added_devices
+        current_devices = coordinator.current_devices_with_type
+        if new_devices := current_devices - added_devices:
             entities = [
                 PuraSensorEntity(
                     coordinator=coordinator,
@@ -260,7 +256,7 @@ async def async_setup_entry(
                     device_id=device_id,
                 )
                 for device_types, descriptions in SENSORS.items()
-                for device_type, device_id in new_devices
+                for device_id, device_type in new_devices
                 if device_type in device_types
                 for description in descriptions
             ]
@@ -271,7 +267,7 @@ async def async_setup_entry(
                     device_type=device_type,
                     device_id=device_id,
                 )
-                for device_type, device_id in new_devices
+                for device_id, device_type in new_devices
                 if device_type == "car"
                 and coordinator.get_device(device_type, device_id).get(
                     "batteryRemaining"
@@ -279,6 +275,7 @@ async def async_setup_entry(
                 is not None
             )
             async_add_entities(entities)
+        added_devices = current_devices
 
     _check_devices()
     entry.async_on_unload(coordinator.async_add_listener(_check_devices))
