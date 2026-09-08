@@ -185,10 +185,11 @@ class PuraDataUpdateCoordinator(
             self._handle_failure("Pura API update")
             raise UpdateFailed(err) from err
 
-        if not self.subscriber.is_running:
+        if not (subscriber := self.subscriber).is_running:
             try:
-                self.subscriber.token = self.api.get_tokens().get("id_token")
-                self.subscriber.start(self._async_handle_message)
+                await subscriber.stop()
+                subscriber.token = self.api.get_tokens().get("id_token")
+                subscriber.start(self._async_handle_message)
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.warning("Could not start websocket subscriber", exc_info=True)
 
