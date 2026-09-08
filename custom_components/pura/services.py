@@ -56,7 +56,9 @@ async def async_get_devices(call: ServiceCall) -> dict[str, PuraDataUpdateCoordi
                 for entry_id in device_entry.config_entries:
                     if entry := hass.config_entries.async_get_entry(entry_id):
                         if entry.domain == DOMAIN:
-                            devices[device_entry.serial_number] = entry.runtime_data
+                            devices[device_entry.serial_number] = (
+                                entry.runtime_data.coordinator
+                            )
                             break
 
     return devices

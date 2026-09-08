@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 import random
@@ -13,6 +14,7 @@ from pypura.ws_subscriber import WebSocketSubscriber
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
     ConfigEntryAuthFailed,
@@ -106,7 +108,8 @@ class PuraDataUpdateCoordinator(
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            config_entry=config_entry,
+            name=f"{DOMAIN.capitalize()} device",
             update_interval=self._get_interval_with_jitter(),
         )
 
@@ -114,7 +117,26 @@ class PuraDataUpdateCoordinator(
             session=async_get_clientsession(hass),
             token=client.get_tokens().get("id_token"),
         )
-        self.subscriber.start(self._async_handle_message)
+
+        self.previous_devices: set[str] = set()
+
+        # Initialize previous_devices from the device registry so that
+        # stale devices can be detected on the first update after restart.
+        device_registry = dr.async_get(hass)
+        for device in dr.async_entries_for_config_entry(
+            device_registry, config_entry.entry_id
+        ):
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN:
+                    self.previous_devices.add(identifier)
+
+    @property
+    def current_devices_with_type(self) -> set[tuple[str, str]]:
+        """Return the current devices with type."""
+        return {
+            (device_id, device.get("modelType", ""))
+            for device_id, device in self.data.items()
+        }
 
     def get_device(self, device_type: str | None, device_id: str) -> dict[str, Any]:
         """Get device by type and id."""
@@ -124,18 +146,36 @@ class PuraDataUpdateCoordinator(
 
         raise LookupError(f"Device {device_id!r} not found")
 
+    def _check_stale_devices(self) -> None:
+        """Check for stale devices."""
+        current_devices = set(self.devices)
+        if stale_devices := self.previous_devices - current_devices:
+            device_registry = dr.async_get(self.hass)
+            for device_id in stale_devices:
+                if device := device_registry.async_get_device_by_identifier(
+                    (DOMAIN, device_id), self.config_entry.entry_id
+                ):
+                    device_registry.async_remove_device(device.id)
+        self.previous_devices = current_devices
+
     async def _async_handle_message(self, update: dict[str, Any]) -> None:
         """Handle a pushed data message."""
+        current_devices = set(self.devices)
         if merge_websocket_update(self.devices, update):
-            self.async_set_updated_data(self.devices)
+            if set(self.devices) - current_devices:
+                # schedule a refresh since we have a new device
+                await self.async_request_refresh()
+            else:
+                self._check_stale_devices()
+                self.async_set_updated_data(self.devices)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Update data via library, refresh token if necessary."""
         try:
-            if devices := await self.hass.async_add_executor_job(self.api.get_devices):
-                _LOGGER.debug("Devices updated")
-                self.devices = devices
-
+            devices = await self.hass.async_add_executor_job(self.api.get_devices)
+            _LOGGER.debug("Devices updated")
+            self.devices = devices
+            self._check_stale_devices()
             self._handle_success()
 
         except PuraAuthenticationError as err:
@@ -144,41 +184,75 @@ class PuraDataUpdateCoordinator(
         except Exception as err:  # pylint: disable=broad-except
             self._handle_failure("Pura API update")
             raise UpdateFailed(err) from err
+
+        if not (subscriber := self.subscriber).is_running:
+            try:
+                await subscriber.stop()
+                subscriber.token = self.api.get_tokens().get("id_token")
+                subscriber.start(self._async_handle_message)
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.warning("Could not start websocket subscriber", exc_info=True)
+
         return self.devices
 
 
-class PuraCarFirmwareDataUpdateCoordinator(JitterBackoffMixin, DataUpdateCoordinator):
+class PuraFirmwareDataUpdateCoordinator(
+    JitterBackoffMixin, DataUpdateCoordinator[dict[str, dict[str, Any]]]
+):
     """Class to manage fetching data from the API."""
 
     def __init__(
-        self, hass: HomeAssistant, client: Pura, config_entry: ConfigEntry
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        device_coordinator: PuraDataUpdateCoordinator,
     ) -> None:
         """Initialize."""
-        self.api = client
+        self.api = device_coordinator.api
+        self.device_coordinator = device_coordinator
 
-        self._init_jitter_backoff(config_entry)
+        self._base_interval = timedelta(days=1).total_seconds()
+        self._consecutive_failures = 0
 
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            config_entry=config_entry,
+            name=f"{DOMAIN.capitalize()} firmware",
             update_interval=self._get_interval_with_jitter(),
         )
 
-    async def _async_update_data(self) -> dict[str, str]:
+        self._semaphore = asyncio.Semaphore(4)
+
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Update data via library, refresh token if necessary."""
-        try:
-            details: str = await self.hass.async_add_executor_job(
-                self.api.get_latest_firmware_details, "car", "v1"
+        device_ids = list(self.device_coordinator.data)
+        results = await asyncio.gather(
+            *(
+                self._async_fetch_one(
+                    device_id, device.get("model"), device.get("deviceVer")
+                )
+                for device_id, device in self.device_coordinator.data.items()
+            ),
+            return_exceptions=True,
+        )
+
+        data = self.data or {}
+        for device_id, result in zip(device_ids, results):
+            if isinstance(result, Exception):
+                _LOGGER.warning("Firmware check failed for %s: %s", device_id, result)
+                continue
+            data[device_id] = result
+        return data
+
+    async def _async_fetch_one(
+        self, device_id: str, device_type: int, device_version: str
+    ) -> dict[str, Any]:
+        """Fetch firmware status for a single device, bounded by the semaphore."""
+        async with self._semaphore:
+            return await self.hass.async_add_executor_job(
+                self.api.get_latest_firmware_details,
+                device_id,
+                device_type,
+                device_version,
             )
-            result = {
-                (part := line.split("=", 1))[0].lower(): part[1]
-                for line in details.split("\n")
-            }
-
-            self._handle_success()
-
-            return result
-        except Exception as err:  # pylint: disable=broad-except
-            self._handle_failure("Pura car firmware API update")
-            raise UpdateFailed(err) from err

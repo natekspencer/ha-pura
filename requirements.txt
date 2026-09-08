@@ -4,7 +4,7 @@ numpy
 PyTurboJPEG
 
 # Integration
-pypura>=3.0.2
+pypura>=3.0.3
 ical
 
 # Development
