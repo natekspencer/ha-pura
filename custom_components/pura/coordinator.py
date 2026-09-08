@@ -160,9 +160,14 @@ class PuraDataUpdateCoordinator(
 
     async def _async_handle_message(self, update: dict[str, Any]) -> None:
         """Handle a pushed data message."""
+        current_devices = set(self.devices)
         if merge_websocket_update(self.devices, update):
-            self._check_stale_devices()
-            self.async_set_updated_data(self.devices)
+            if set(self.devices) - current_devices:
+                # schedule a refresh since we have a new device
+                await self.async_request_refresh()
+            else:
+                self._check_stale_devices()
+                self.async_set_updated_data(self.devices)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Update data via library, refresh token if necessary."""
