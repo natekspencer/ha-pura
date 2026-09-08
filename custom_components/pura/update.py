@@ -83,16 +83,6 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
         else:
             self._attr_supported_features |= UpdateEntityFeature.INSTALL
 
-    async def async_added_to_hass(self) -> None:
-        """Register listeners when added to hass."""
-        await super().async_added_to_hass()
-        # explicitly add this entity to the device coordinator listeners
-        self.async_on_remove(
-            self.coordinator.device_coordinator.async_add_listener(
-                self._handle_coordinator_update
-            )
-        )
-
     @callback
     @override
     def _handle_coordinator_update(self) -> None:
@@ -127,6 +117,16 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
         self._attr_update_percentage = update_percentage
 
         super()._handle_coordinator_update()
+
+    async def async_added_to_hass(self) -> None:
+        """Register listeners when added to hass."""
+        await super().async_added_to_hass()
+        # explicitly add this entity to the device coordinator listeners
+        self.async_on_remove(
+            self.coordinator.device_coordinator.async_add_listener(
+                self._handle_coordinator_update
+            )
+        )
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any

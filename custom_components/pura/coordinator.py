@@ -173,16 +173,20 @@ class PuraDataUpdateCoordinator(
             self._check_stale_devices()
             self._handle_success()
 
-            if not self.subscriber.is_running:
-                self.subscriber.token = self.api.get_tokens().get("id_token")
-                self.subscriber.start(self._async_handle_message)
-
         except PuraAuthenticationError as err:
             raise ConfigEntryAuthFailed from err
 
         except Exception as err:  # pylint: disable=broad-except
             self._handle_failure("Pura API update")
             raise UpdateFailed(err) from err
+
+        if not self.subscriber.is_running:
+            try:
+                self.subscriber.token = self.api.get_tokens().get("id_token")
+                self.subscriber.start(self._async_handle_message)
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.warning("Could not start websocket subscriber", exc_info=True)
+
         return self.devices
 
 
