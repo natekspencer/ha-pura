@@ -101,7 +101,7 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
 
         in_progress = False
         if ota := (device.get("ota") or {}):
-            in_progress = ota.get("status") not in ("Finished")
+            in_progress = ota.get("status") not in ("Finished",)
         self._attr_in_progress = in_progress
 
         installed_version: str | None = None
