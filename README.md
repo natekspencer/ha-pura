@@ -11,8 +11,8 @@
 <!-- END AUTO-GENERATED HEADER -->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://brands.home-assistant.io/pura/dark_logo.png">
-  <img alt="Pura logo" src="https://brands.home-assistant.io/pura/logo.png">
+  <source media="(prefers-color-scheme: dark)" srcset="custom_components/pura/brand/dark_logo.png">
+  <img alt="Pura logo" src="custom_components/pura/brand/logo.png">
 </picture>
 
 # Pura for Home Assistant
