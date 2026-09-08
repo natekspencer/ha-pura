@@ -11,8 +11,8 @@
 <!-- END AUTO-GENERATED HEADER -->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://brands.home-assistant.io/pura/dark_logo.png">
-  <img alt="Pura logo" src="https://brands.home-assistant.io/pura/logo.png">
+  <source media="(prefers-color-scheme: dark)" srcset="custom_components/pura/brand/dark_logo.png">
+  <img alt="Pura logo" src="custom_components/pura/brand/logo.png">
 </picture>
 
 # Pura for Home Assistant
@@ -121,6 +121,6 @@ If you don't already own a Pura diffuser, please consider using [my referral cod
 
 ## 📈 Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=natekspencer/ha-pura&type=date&legend=top-left&sealed_token=7Uib2SFVxSVmAtivBDCpY9jOxMMjXbi6ZsyarLNUxAahgF1piL37QWnuwkpg4lRtmxJdNq3pHwUhUYkfwDPUtyTiXYTrbR_-Ocd2oP4uIclGbcw5VFultgEbqQh2O_VtDluBlTbfS153CHnWtf1f9InsxsXxzdVcCKlwBALi6JNcKfB3yNkG8mYi3wT8)](https://www.star-history.com/?repos=natekspencer%2Fha-pura)
+[![Star History Chart](https://api.star-history.com/chart?repos=natekspencer/ha-pura&type=date&legend=top-left)](https://www.star-history.com/?repos=natekspencer%2Fha-pura)
 
 <!-- END AUTO-GENERATED FOOTER -->
