@@ -96,7 +96,9 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
         device = self.get_device()
         if self._device_type == "car":  # car uses fwVersion
             return str(device.get(self.entity_description.lookup_key))
-        return str(device.get("otaVer"))  # all others use otaVer
+        if (ota_version := device.get("otaVer")) is not None:
+            return str(ota_version)
+        return None
 
     @property
     def latest_version(self) -> str | None:
