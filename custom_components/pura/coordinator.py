@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import random
-from typing import Any
+from typing import Any, NamedTuple
 
 from pypura import Pura, PuraAuthenticationError
 from pypura.utils import merge_websocket_update
@@ -196,6 +196,14 @@ class PuraDataUpdateCoordinator(
         return self.devices
 
 
+class DeviceVersion(NamedTuple):
+    """Identifies a device's known model/type and version."""
+
+    id: str
+    model: int
+    version: str
+
+
 class PuraFirmwareDataUpdateCoordinator(
     JitterBackoffMixin, DataUpdateCoordinator[dict[str, dict[str, Any]]]
 ):
@@ -223,32 +231,51 @@ class PuraFirmwareDataUpdateCoordinator(
         )
 
         self._semaphore = asyncio.Semaphore(4)
+        self._data_lock = asyncio.Lock()
 
-    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
-        """Update data via library, refresh token if necessary."""
-        device_ids = list(self.device_coordinator.data)
-        results = await asyncio.gather(
-            *(
-                self._async_fetch_one(
-                    device_id, device.get("model"), device.get("deviceVer")
-                )
-                for device_id, device in self.device_coordinator.data.items()
-            ),
-            return_exceptions=True,
+        self._devices: set[DeviceVersion] = set()
+        self._update_device_versions(False)
+        config_entry.async_on_unload(
+            self.device_coordinator.async_add_listener(self._update_device_versions)
         )
 
-        data = self.data or {}
-        for device_id, result in zip(device_ids, results):
-            if isinstance(result, Exception):
-                _LOGGER.warning("Firmware check failed for %s: %s", device_id, result)
-                continue
-            data[device_id] = result
-        return data
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+        """Fetch latest firmware details for every known device."""
+        return await self._async_fetch_devices(self._devices)
+
+    async def _async_refresh_devices(self, devices: set[DeviceVersion]) -> None:
+        """Fetch latest firmware details for a set of devices and set coordinator data."""
+        data = await self._async_fetch_devices(devices)
+        self.async_set_updated_data(data)
+
+    async def _async_fetch_devices(
+        self, devices: set[DeviceVersion]
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch and merge latest firmware details for a set of devices."""
+        async with self._data_lock:
+            device_list = list(devices)
+            results = await asyncio.gather(
+                *(
+                    self._async_fetch_one(device.id, device.model, device.version)
+                    for device in device_list
+                ),
+                return_exceptions=True,
+            )
+
+            data = dict(self.data or {})
+            for device, result in zip(device_list, results):
+                if isinstance(result, Exception):
+                    _LOGGER.warning(
+                        "Firmware check failed for %s: %s", device.id, result
+                    )
+                    continue
+                data[device.id] = result
+            return data
 
     async def _async_fetch_one(
         self, device_id: str, device_type: int, device_version: str
     ) -> dict[str, Any]:
-        """Fetch firmware status for a single device, bounded by the semaphore."""
+        """Fetch latest firmware details for a single device, bounded by the semaphore."""
         async with self._semaphore:
             return await self.hass.async_add_executor_job(
                 self.api.get_latest_firmware_details,
@@ -256,3 +283,16 @@ class PuraFirmwareDataUpdateCoordinator(
                 device_type,
                 device_version,
             )
+
+    def _update_device_versions(self, request_refresh: bool = True) -> None:
+        """React to devices whose device version just became known or changed."""
+        current_devices = {
+            DeviceVersion(device_id, device.get("model"), device_version)
+            for device_id, device in self.device_coordinator.data.items()
+            if (device_version := device.get("deviceVer"))
+        }
+        if request_refresh and (new_devices := current_devices - self._devices):
+            self.config_entry.async_create_task(
+                self.hass, self._async_refresh_devices(new_devices)
+            )
+        self._devices = current_devices
