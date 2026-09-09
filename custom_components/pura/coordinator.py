@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import random
-from typing import Any
+from typing import Any, NamedTuple
 
 from pypura import Pura, PuraAuthenticationError
 from pypura.utils import merge_websocket_update
@@ -196,6 +196,14 @@ class PuraDataUpdateCoordinator(
         return self.devices
 
 
+class _DeviceVersion(NamedTuple):
+    """Identifies a device's known model/type and version, for diffing."""
+
+    device_id: str
+    device_type: int
+    device_version: str
+
+
 class PuraFirmwareDataUpdateCoordinator(
     JitterBackoffMixin, DataUpdateCoordinator[dict[str, dict[str, Any]]]
 ):
@@ -223,27 +231,46 @@ class PuraFirmwareDataUpdateCoordinator(
         )
 
         self._semaphore = asyncio.Semaphore(4)
+        self._data_lock = asyncio.Lock()
+
+        self._devices: set[_DeviceVersion] = set()
+        self._update_device_model_versions(False)
+        self.device_coordinator.async_add_listener(self._update_device_model_versions)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
-        """Update data via library, refresh token if necessary."""
-        device_ids = list(self.device_coordinator.data)
-        results = await asyncio.gather(
-            *(
-                self._async_fetch_one(
-                    device_id, device.get("model"), device.get("deviceVer")
-                )
-                for device_id, device in self.device_coordinator.data.items()
-            ),
-            return_exceptions=True,
-        )
+        """Poll firmware status for every known device on the daily interval."""
+        return await self._async_fetch_devices(self._devices)
 
-        data = self.data or {}
-        for device_id, result in zip(device_ids, results):
-            if isinstance(result, Exception):
-                _LOGGER.warning("Firmware check failed for %s: %s", device_id, result)
-                continue
-            data[device_id] = result
-        return data
+    async def _async_refresh_devices(self, devices: set[_DeviceVersion]) -> None:
+        """Fetch and merge firmware status for specific devices outside the normal poll."""
+        data = await self._async_fetch_devices(devices)
+        self.async_set_updated_data(data)
+
+    async def _async_fetch_devices(
+        self, devices: set[_DeviceVersion]
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch firmware status for a set of devices and merge into current data."""
+        async with self._data_lock:
+            device_list = list(devices)
+            results = await asyncio.gather(
+                *(
+                    self._async_fetch_one(
+                        device.device_id, device.device_type, device.device_version
+                    )
+                    for device in device_list
+                ),
+                return_exceptions=True,
+            )
+
+            data = dict(self.data or {})
+            for device, result in zip(device_list, results):
+                if isinstance(result, Exception):
+                    _LOGGER.warning(
+                        "Firmware check failed for %s: %s", device.device_id, result
+                    )
+                    continue
+                data[device.device_id] = result
+            return data
 
     async def _async_fetch_one(
         self, device_id: str, device_type: int, device_version: str
@@ -256,3 +283,16 @@ class PuraFirmwareDataUpdateCoordinator(
                 device_type,
                 device_version,
             )
+
+    def _update_device_model_versions(self, request_refresh: bool = True) -> None:
+        """React to devices whose firmware version just became known or changed."""
+        current_devices = {
+            _DeviceVersion(device_id, device.get("model"), device_version)
+            for device_id, device in self.device_coordinator.data.items()
+            if (device_version := device.get("deviceVer"))
+        }
+        if request_refresh and (new_devices := current_devices - self._devices):
+            self.config_entry.async_create_task(
+                self.hass, self._async_refresh_devices(new_devices)
+            )
+        self._devices = current_devices
