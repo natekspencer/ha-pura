@@ -196,12 +196,12 @@ class PuraDataUpdateCoordinator(
         return self.devices
 
 
-class _DeviceVersion(NamedTuple):
-    """Identifies a device's known model/type and version, for diffing."""
+class DeviceVersion(NamedTuple):
+    """Identifies a device's known model/type and version."""
 
-    device_id: str
-    device_type: int
-    device_version: str
+    id: str
+    model: int
+    version: str
 
 
 class PuraFirmwareDataUpdateCoordinator(
@@ -233,30 +233,30 @@ class PuraFirmwareDataUpdateCoordinator(
         self._semaphore = asyncio.Semaphore(4)
         self._data_lock = asyncio.Lock()
 
-        self._devices: set[_DeviceVersion] = set()
-        self._update_device_model_versions(False)
-        self.device_coordinator.async_add_listener(self._update_device_model_versions)
+        self._devices: set[DeviceVersion] = set()
+        self._update_device_versions(False)
+        config_entry.async_on_unload(
+            self.device_coordinator.async_add_listener(self._update_device_versions)
+        )
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
-        """Poll firmware status for every known device on the daily interval."""
+        """Fetch latest firmware details for every known device."""
         return await self._async_fetch_devices(self._devices)
 
-    async def _async_refresh_devices(self, devices: set[_DeviceVersion]) -> None:
-        """Fetch and merge firmware status for specific devices outside the normal poll."""
+    async def _async_refresh_devices(self, devices: set[DeviceVersion]) -> None:
+        """Fetch latest firmware details for a set of devices and set coordinator data."""
         data = await self._async_fetch_devices(devices)
         self.async_set_updated_data(data)
 
     async def _async_fetch_devices(
-        self, devices: set[_DeviceVersion]
+        self, devices: set[DeviceVersion]
     ) -> dict[str, dict[str, Any]]:
-        """Fetch firmware status for a set of devices and merge into current data."""
+        """Fetch and merge latest firmware details for a set of devices."""
         async with self._data_lock:
             device_list = list(devices)
             results = await asyncio.gather(
                 *(
-                    self._async_fetch_one(
-                        device.device_id, device.device_type, device.device_version
-                    )
+                    self._async_fetch_one(device.id, device.model, device.version)
                     for device in device_list
                 ),
                 return_exceptions=True,
@@ -266,16 +266,16 @@ class PuraFirmwareDataUpdateCoordinator(
             for device, result in zip(device_list, results):
                 if isinstance(result, Exception):
                     _LOGGER.warning(
-                        "Firmware check failed for %s: %s", device.device_id, result
+                        "Firmware check failed for %s: %s", device.id, result
                     )
                     continue
-                data[device.device_id] = result
+                data[device.id] = result
             return data
 
     async def _async_fetch_one(
         self, device_id: str, device_type: int, device_version: str
     ) -> dict[str, Any]:
-        """Fetch firmware status for a single device, bounded by the semaphore."""
+        """Fetch latest firmware details for a single device, bounded by the semaphore."""
         async with self._semaphore:
             return await self.hass.async_add_executor_job(
                 self.api.get_latest_firmware_details,
@@ -284,10 +284,10 @@ class PuraFirmwareDataUpdateCoordinator(
                 device_version,
             )
 
-    def _update_device_model_versions(self, request_refresh: bool = True) -> None:
-        """React to devices whose firmware version just became known or changed."""
+    def _update_device_versions(self, request_refresh: bool = True) -> None:
+        """React to devices whose device version just became known or changed."""
         current_devices = {
-            _DeviceVersion(device_id, device.get("model"), device_version)
+            DeviceVersion(device_id, device.get("model"), device_version)
             for device_id, device in self.device_coordinator.data.items()
             if (device_version := device.get("deviceVer"))
         }
