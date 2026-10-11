@@ -1,14 +1,12 @@
 # Home Assistant
 homeassistant>=2026.8
-numpy
-PyTurboJPEG
 
 # Integration
 pypura>=3.0.3
 ical
 
 # Development
-colorlog>=6.7.0
-pip>=21.0
+colorlog>=6.12.0
+pip>=26.2.1
 pre-commit
-ruff>=0.16.2
+ruff>=0.17.0
