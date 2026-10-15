@@ -87,6 +87,37 @@ async def test_away_mode_added_when_reported(
     assert "does not generate unique IDs" not in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("away_mode", "expected"),
+    [
+        (None, False),
+        ("enabled", False),
+        ({}, False),
+        ({"away": False}, False),
+        ({"away": False, "enabled": False}, True),
+    ],
+    ids=["none", "string", "empty", "missing_enabled", "valid"],
+)
+async def test_away_mode_data(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    away_mode: Any,
+    expected: bool,
+) -> None:
+    """Test away mode is only added when the device reports usable data."""
+    devices[HOME_V5_ID]["awayMode"] = away_mode
+
+    entry = await setup_integration(hass, [Platform.SWITCH])
+    assert ("away_mode" in _switch_keys(entity_registry, HOME_V5_ID)) is expected
+
+    # Valid data on a later update should add the switch
+    devices[HOME_V5_ID]["awayMode"] = {"away": False, "enabled": False}
+    await _refresh(hass, entry)
+    assert "away_mode" in _switch_keys(entity_registry, HOME_V5_ID)
+
+
 async def test_turn_on_away_mode(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,

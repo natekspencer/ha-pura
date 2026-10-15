@@ -109,7 +109,9 @@ SWITCHES: tuple[PuraSwitchEntityDescription, ...] = (
         lookup_key="awayMode",
         # Away mode is available on all home devices, but not on car diffusers.
         exists_fn=lambda device_type, device: (
-            device_type != "car" and "awayMode" in device
+            device_type != "car"
+            and isinstance(away_mode := device.get("awayMode"), dict)
+            and "enabled" in away_mode
         ),
         is_on_fn=lambda data: data["enabled"],
         toggle_fn=lambda self, value: (
