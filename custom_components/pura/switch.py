@@ -41,33 +41,40 @@ async def async_setup_entry(
 ) -> None:
     """Set up Pura switchs using config entry."""
     coordinator = entry.runtime_data.coordinator
-    added_devices: set[tuple[str, str]] = set()
+    added_switches: dict[tuple[str, str], set[str]] = {}
 
     def _check_devices() -> None:
-        nonlocal added_devices
+        nonlocal added_switches
         current_devices = coordinator.current_devices_with_type
-        new_devices = current_devices - added_devices
-        added_devices = current_devices
-
-        if not new_devices:
-            return
+        added_switches = {
+            device: keys
+            for device, keys in added_switches.items()
+            if device in current_devices
+        }
 
         entities: list[PuraSwitchEntity] = []
 
-        for device_id, device_type in new_devices:
+        # Re-evaluate switches not yet added, as device capabilities may change
+        for device_id, device_type in current_devices:
             device = coordinator.get_device(device_type, device_id)
-            entities.extend(
-                PuraSwitchEntity(
-                    coordinator=coordinator,
-                    description=description,
-                    device_type=device_type,
-                    device_id=device_id,
+            added_keys = added_switches.setdefault((device_id, device_type), set())
+            for description in SWITCHES:
+                if description.key in added_keys or not description.exists_fn(
+                    device_type, device
+                ):
+                    continue
+                added_keys.add(description.key)
+                entities.append(
+                    PuraSwitchEntity(
+                        coordinator=coordinator,
+                        description=description,
+                        device_type=device_type,
+                        device_id=device_id,
+                    )
                 )
-                for description in SWITCHES
-                if description.exists_fn(device_type, device)
-            )
 
-        async_add_entities(entities)
+        if entities:
+            async_add_entities(entities)
 
     _check_devices()
     entry.async_on_unload(coordinator.async_add_listener(_check_devices))
