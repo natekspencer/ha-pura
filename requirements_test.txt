@@ -1,0 +1,6 @@
+# Integration
+pypura==3.1.0
+ical
+
+# Testing (pins the matching homeassistant version)
+pytest-homeassistant-custom-component==0.13.372
