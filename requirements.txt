@@ -2,7 +2,7 @@
 homeassistant>=2026.8
 
 # Integration
-pypura>=3.0.3
+pypura>=3.1.0
 ical
 
 # Development

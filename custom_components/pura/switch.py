@@ -56,31 +56,16 @@ async def async_setup_entry(
 
         for device_id, device_type in new_devices:
             device = coordinator.get_device(device_type, device_id)
-            hardware_version = get_hardware_major_version(device)
-
-            for hardware_versions, descriptions in SWITCHES.items():
-                if hardware_version not in hardware_versions:
-                    continue
-                entities.extend(
-                    PuraSwitchEntity(
-                        coordinator=coordinator,
-                        description=description,
-                        device_type=device_type,
-                        device_id=device_id,
-                    )
-                    for description in descriptions
+            entities.extend(
+                PuraSwitchEntity(
+                    coordinator=coordinator,
+                    description=description,
+                    device_type=device_type,
+                    device_id=device_id,
                 )
-
-            capabilities = device.get("capabilities") or {}
-            if len(capabilities.get("diffusionModes") or []) > 1:
-                entities.append(
-                    PuraSwitchEntity(
-                        coordinator=coordinator,
-                        description=DIFFUSION_MODE_SWITCH,
-                        device_type=device_type,
-                        device_id=device_id,
-                    )
-                )
+                for description in SWITCHES
+                if description.exists_fn(device_type, device)
+            )
 
         async_add_entities(entities)
 
@@ -93,45 +78,51 @@ class PuraSwitchEntityDescription(SwitchEntityDescription):
     """Pura switch entity description."""
 
     lookup_key: str
+    exists_fn: Callable[[str, dict[str, Any]], bool]
     is_on_fn: Callable[[Any], bool]
     toggle_fn: Callable[[PuraSwitchEntity, bool], tuple[Callable[..., bool], dict]]
 
 
-SWITCHES: dict[tuple[str, ...], tuple[PuraSwitchEntityDescription, ...]] = {
-    ("2",): (
-        PuraSwitchEntityDescription(
-            key="ambient_mode",
-            name="Ambient mode",
-            lookup_key="ambientMode",
-            is_on_fn=lambda data: data,
-            toggle_fn=lambda self, value: (
-                self.coordinator.api.set_ambient_mode,
-                {"ambient_mode": value},
-            ),
+SWITCHES: tuple[PuraSwitchEntityDescription, ...] = (
+    PuraSwitchEntityDescription(
+        key="ambient_mode",
+        name="Ambient mode",
+        lookup_key="ambientMode",
+        # Ambient mode is only available on Pura 3 (v2 hardware)
+        exists_fn=lambda device_type, device: get_hardware_major_version(device) == "2",
+        is_on_fn=lambda data: data,
+        toggle_fn=lambda self, value: (
+            self.coordinator.api.set_ambient_mode,
+            {"ambient_mode": value},
         ),
     ),
-    ("2", "3", "4", "26", "22"): (
-        PuraSwitchEntityDescription(
-            key="away_mode",
-            name="Away mode",
-            lookup_key="awayMode",
-            is_on_fn=lambda data: data["enabled"],
-            toggle_fn=lambda self, value: (
-                self.coordinator.api.set_away_mode,
-                build_away_mode_json(self, value),
-            ),
+    PuraSwitchEntityDescription(
+        key="away_mode",
+        name="Away mode",
+        lookup_key="awayMode",
+        # Away mode is available on all home devices, but not on car diffusers.
+        exists_fn=lambda device_type, device: (
+            device_type != "car" and "awayMode" in device
+        ),
+        is_on_fn=lambda data: data["enabled"],
+        toggle_fn=lambda self, value: (
+            self.coordinator.api.set_away_mode,
+            build_away_mode_json(self, value),
         ),
     ),
-}
-
-DIFFUSION_MODE_SWITCH = PuraSwitchEntityDescription(
-    key="diffusion_mode",
-    translation_key="diffusion_mode",
-    lookup_key="diffusionMode",
-    is_on_fn=lambda data: data == "oscillation-multi-bay",
-    toggle_fn=lambda self, value: (
-        self.coordinator.api.set_diffusion_mode,
-        {"mode": "oscillation-multi-bay" if value else "standard"},
+    PuraSwitchEntityDescription(
+        key="diffusion_mode",
+        translation_key="diffusion_mode",
+        lookup_key="diffusionMode",
+        # Only expose when the device supports more than one diffusion mode.
+        exists_fn=lambda device_type, device: (
+            len((device.get("capabilities") or {}).get("diffusionModes") or []) > 1
+        ),
+        is_on_fn=lambda data: data == "oscillation-multi-bay",
+        toggle_fn=lambda self, value: (
+            self.coordinator.api.set_diffusion_mode,
+            {"mode": "oscillation-multi-bay" if value else "standard"},
+        ),
     ),
 )
 
