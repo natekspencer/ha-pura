@@ -23,8 +23,9 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 from homeassistant.util.dt import UTC, utc_from_timestamp
 
 from . import PuraConfigEntry
@@ -244,6 +245,7 @@ def _async_migrate_entities(
     TODO: Added in October 2026. Remove this migration, and its tests in
     tests/test_sensor.py, in a release after April 2027.
     """
+    device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     for device_id, device in coordinator.data.items():
         if device.get("modelType") != "mini":
@@ -258,15 +260,22 @@ def _async_migrate_entities(
         if entity_registry.async_get_entity_id(SENSOR_DOMAIN, DOMAIN, new_unique_id):
             continue
         updates: dict[str, Any] = {"new_unique_id": new_unique_id}
-        # Only rename entity IDs that have not been customized
-        if entity_id.endswith("_slot_installed"):
-            new_entity_id = (
-                f"{entity_id.removesuffix('_slot_installed')}_fragrance_installed"
-            )
-            if not entity_registry.async_is_registered(
-                new_entity_id
-            ) and hass.states.async_available(new_entity_id):
-                updates["new_entity_id"] = new_entity_id
+        # Only rename entity IDs generated from the device name, not customized ones
+        registry_entry = entity_registry.async_get(entity_id)
+        if registry_entry.device_id and (
+            device_entry := device_registry.async_get(registry_entry.device_id)
+        ):
+            for name in filter(None, (device_entry.name_by_user, device_entry.name)):
+                if entity_id != f"{SENSOR_DOMAIN}.{slugify(f'{name} slot installed')}":
+                    continue
+                new_entity_id = (
+                    f"{SENSOR_DOMAIN}.{slugify(f'{name} fragrance installed')}"
+                )
+                if not entity_registry.async_is_registered(
+                    new_entity_id
+                ) and hass.states.async_available(new_entity_id):
+                    updates["new_entity_id"] = new_entity_id
+                break
         entity_registry.async_update_entity(entity_id, **updates)
 
 
@@ -275,13 +284,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up Pura sensors using config entry."""
     coordinator = entry.runtime_data.coordinator
-    _async_migrate_entities(hass, coordinator)
     added_devices: set[tuple[str, str]] = set()
 
     def _check_devices() -> None:
         nonlocal added_devices
         current_devices = coordinator.current_devices_with_type
         if new_devices := current_devices - added_devices:
+            _async_migrate_entities(hass, coordinator)
             entities = [
                 PuraSensorEntity(
                     coordinator=coordinator,
