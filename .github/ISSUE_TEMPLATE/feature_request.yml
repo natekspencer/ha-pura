@@ -19,10 +19,13 @@ body:
       label: Which Pura device(s) is this request for?
       description: You may select more than one.
       options:
-        - label: Pura 3
-        - label: Pura 4
-        - label: Pura Home
-        - label: Pura Car
+        - label: Home v3
+        - label: Home v4
+        - label: Home v5
+        - label: Home Mini
+        - label: Home Plus
+        - label: Car
+        - label: Car Pro
         - label: Other (please specify in the additional information field below)
   - type: textarea
     attributes:

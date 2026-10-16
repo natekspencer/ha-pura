@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pura app or device problem
+    url: https://help.pura.com/
+    about: >-
+      If the Pura app shows the same incorrect data (e.g. fragrance remaining, connectivity), the issue is with Pura's
+      cloud or your device, not this integration. Please contact Pura support.
+  - name: Questions and help
+    url: https://github.com/natekspencer/ha-pura/discussions
+    about: Ask how to use the integration, its actions or automations.
