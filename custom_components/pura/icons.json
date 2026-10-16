@@ -19,6 +19,15 @@
       }
     },
     "sensor": {
+      "active_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_fragrance_remaining": {
+        "default": "mdi:scent"
+      },
       "controller": {
         "default": "mdi:toggle-switch-outline",
         "state": {
@@ -26,6 +35,15 @@
           "schedule": "mdi:calendar-blank-outline",
           "timer": "mdi:timer-outline"
         }
+      },
+      "fragrance": {
+        "default": "mdi:scent"
+      },
+      "fragrance_remaining": {
+        "default": "mdi:scent"
+      },
+      "intensity": {
+        "default": "mdi:fan"
       }
     }
   },

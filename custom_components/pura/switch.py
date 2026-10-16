@@ -93,7 +93,7 @@ class PuraSwitchEntityDescription(SwitchEntityDescription):
 SWITCHES: tuple[PuraSwitchEntityDescription, ...] = (
     PuraSwitchEntityDescription(
         key="ambient_mode",
-        name="Ambient mode",
+        translation_key="ambient_mode",
         lookup_key="ambientMode",
         # Ambient mode is only available on Pura 3 (v2 hardware)
         exists_fn=lambda device_type, device: get_hardware_major_version(device) == "2",
@@ -105,7 +105,7 @@ SWITCHES: tuple[PuraSwitchEntityDescription, ...] = (
     ),
     PuraSwitchEntityDescription(
         key="away_mode",
-        name="Away mode",
+        translation_key="away_mode",
         lookup_key="awayMode",
         # Away mode is available on all home devices, but not on car diffusers.
         exists_fn=lambda device_type, device: (
