@@ -70,6 +70,49 @@ If you created your Pura account using one of the third-party provider options (
 6. Follow the steps in the Pura app to set your new password (check your email, enter the verification code and create your password). If you didn't receive a verification code, check your spam folder or request a new code.
 7. Once you have successfully set a password, follow the configuration steps above.
 
+## 🧩 Entities
+
+Entities are created based on what each device supports. "Home" refers to all generations of wall diffusers.
+
+### Controls and configuration
+
+| Entity                    | Type   | Devices            | Description                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fragrance                 | Select | Home, Plus, Mini   | The primary control. `Off` stops the diffuser and `Slot 1`/`Slot 2` runs that fragrance continuously. Only installed slots are listed. To run for a limited time, use the [`start_timer`](#start_timer) action instead.                                                                                                               |
+| Intensity                 | Select | Home, Plus, Mini   | Intensity of the active fragrance: `Subtle`, `Light`, `Medium`, `Pronounced` or `Strong`. A fragrance must already be running to change it. `Off` stops the diffuser, the same as setting Fragrance to `Off`.                                                                                                                         |
+| Nightlight                | Light  | Home, Mini         | The nightlight, including brightness and color.                                                                                                                                                                                                                                                                                       |
+| Away mode                 | Switch | Home, Plus, Mini † | Enables Pura's own away mode, which pauses the diffuser when the phone running the Pura app leaves the area. It does **not** mean you are away. To turn diffusers off when nobody is home, use a Home Assistant automation that sets Fragrance to `Off` instead. While Pura's away mode is active, the diffuser cannot be controlled. |
+| Auto-alternate fragrances | Switch | Home v4/v5, Plus † | Alternates between both fragrances. Only created for devices that support multiple diffusion modes.                                                                                                                                                                                                                                   |
+| Ambient mode              | Switch | Early Pura 3       | Pura's ambient mode setting. Only available on early Pura 3 hardware (version 2); later hardware does not support it.                                                                                                                                                                                                                 |
+
+† Created for any device that reports support for the feature, so it may also appear on other models as Pura adds support. The devices listed are those known to support it.
+
+### Sensors
+
+| Entity                | Devices          | Description                                                                                                                                                              |
+| --------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Active fragrance      | Home, Plus       | The name of the fragrance currently running, or `None`.                                                                                                                  |
+| Controller            | Home, Plus, Mini | What is currently controlling the diffuser: `Default` (manual or always on), `Schedule`, `Timer` or `Away`.                                                              |
+| Timer                 | Home, Plus, Mini | When the running timer ends, if one is active.                                                                                                                           |
+| Fragrance ‡           | All              | The name of the installed fragrance.                                                                                                                                     |
+| Fragrance remaining ‡ | All              | The estimated percentage of fragrance remaining.                                                                                                                         |
+| Runtime ‡             | All              | How long the installed fragrance has been running in total.                                                                                                              |
+| Low fragrance ‡       | All              | Whether the fragrance is running low. Unavailable while the slot is empty.                                                                                               |
+| Fragrance installed ‡ | Home, Plus, Mini | When the fragrance was installed. Disabled by default.                                                                                                                   |
+| Fan intensity         | Car              | The fan intensity of the car diffuser.                                                                                                                                   |
+| Last active           | Car              | When the car diffuser was last active.                                                                                                                                   |
+| Battery               | Car              | The battery level. Only created for devices that report it, such as the Car Pro.                                                                                         |
+| Connected             | Home, Plus, Mini | Whether the device is connected to Pura's cloud.                                                                                                                         |
+| Firmware              | All              | An update entity showing whether newer firmware is available. Updates can be installed from Home Assistant, except for car diffusers, which update through the Pura app. |
+
+‡ On two-slot devices (Home, Plus), these are created for each slot and include the slot number, e.g. `Slot 1 fragrance remaining`. Single-slot devices (Mini, Car) have no number.
+
+A single **Pura** calendar entity also shows the schedules for all of your devices.
+
+> ℹ️ Pura devices do not measure how much oil is left. Fragrance remaining is an estimate calculated by Pura based on runtime and intensity, and matches what the Pura app shows.
+
+For a dashboard card designed for these entities, see the community-made [Pura card](https://github.com/sabourinj/ha-pura-card).
+
 ## 🎬 Actions
 
 The following custom actions are available:
