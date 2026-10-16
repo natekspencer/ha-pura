@@ -4,10 +4,59 @@ body:
   - type: markdown
     attributes:
       value: |
+        This integration displays the data that Pura's cloud reports, the same data the official Pura app uses.
+        **If the Pura app shows the same value as Home Assistant, the issue is with Pura or your device**, not this
+        integration, and should be reported to [Pura support](https://help.pura.com/).
+
         Before submitting an issue:
-          1. Validate you are running the [latest version of the integration](https://github.com/natekspencer/ha-pura/releases)
-          2. Open the official Pura app and test if the same functionality works there
+          1. Validate you are running the [latest version of the integration](https://github.com/natekspencer/ha-pura/releases) and have restarted Home Assistant since updating
+          2. Open the official Pura app and compare it with what Home Assistant shows
           3. Search [existing issues](https://github.com/natekspencer/ha-pura/issues) (open and recently closed) to see if what you are experiencing has already been reported
+
+        <details>
+        <summary><b>Common problems that are not integration bugs</b></summary>
+
+        - **Fragrance remaining is wrong or stuck:** Pura devices do not measure oil levels. The percentage is an estimate
+          calculated by Pura based on runtime and intensity. If the Pura app shows the same value, contact Pura support or
+          try swapping the fragrance.
+        - **Occasional `502 Bad Gateway`, timeout or connection errors in the logs:** these come from Pura's servers. The
+          integration retries with a backoff, so errors that recover on their own can be ignored. Only report them if the
+          integration stays unavailable.
+        - **`Unknown service: 'cognito-idp'` or setup fails right after installing or updating:** restart Home Assistant,
+          sometimes more than once.
+        - **Entities are unavailable or the refresh token expired:** check for a re-authentication notification, or use
+          Reconfigure on the Pura integration to sign in again.
+        - **Cannot sign in with an account created through Apple, Facebook or Google:** set a password on your Pura account
+          first by following the [troubleshooting steps](https://github.com/natekspencer/ha-pura#-troubleshooting).
+        - **How do I...?:** see the [available actions](https://github.com/natekspencer/ha-pura#-actions) or ask in
+          [Discussions](https://github.com/natekspencer/ha-pura/discussions).
+
+        </details>
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I am running the latest version of this integration and have restarted Home Assistant since updating.
+          required: true
+        - label: >-
+            If this involves device data or controls, I compared with the official Pura app, and it shows something
+            different from Home Assistant (or the feature works in the app but not in Home Assistant).
+          required: true
+        - label: I read the common problems above and searched existing issues, and this has not already been reported.
+          required: true
+  - type: dropdown
+    id: issue_type
+    validations:
+      required: true
+    attributes:
+      label: What type of issue is this?
+      options:
+        - Device data or state in Home Assistant differs from the Pura app
+        - A control or action works in the Pura app but fails in Home Assistant
+        - Setup, sign-in or connection problem
+        - Home Assistant error, warning or deprecation unrelated to Pura data
+        - Something else
   - type: textarea
     validations:
       required: true
@@ -17,10 +66,60 @@ body:
         Describe the issue you are experiencing here. What were you trying to do and what happened?
 
         Provide a clear and concise description of what the problem is.
+  - type: textarea
+    id: comparison
+    attributes:
+      label: What does the Pura app show vs. Home Assistant?
+      placeholder: |
+        Pura app: Living room fragrance at 45%
+        Home Assistant: Living room fragrance at 80%
+
+        (drag-and-drop screenshots of both here)
+      description: >-
+        **Required for device data or control issues.** Describe what the Pura app shows and what Home Assistant
+        shows for the same device, and **<ins>attach a screenshot from both</ins>** taken at about the same time.
+        For failed actions, say whether the same action works in the Pura app.
+        Device data or control issues without this comparison may be closed.
+
+        Leave blank for issues unrelated to Pura data, such as Home Assistant deprecation warnings.
+  - type: checkboxes
+    id: devices
+    attributes:
+      label: Which Pura device(s) are affected?
+      description: You may select more than one.
+      options:
+        - label: Home v3
+        - label: Home v4
+        - label: Home v5
+        - label: Home Mini
+        - label: Home Plus
+        - label: Car
+        - label: Car Pro
+        - label: Other (please specify in the additional information field below)
+  - type: dropdown
+    id: frequency
+    validations:
+      required: true
+    attributes:
+      label: How often does this happen?
+      options:
+        - Every time
+        - Intermittently, but it recovers on its own
+        - Intermittently, and it does not recover without a reload or restart
+        - It happened once
   - type: markdown
     attributes:
       value: |
         ## Environment
+  - type: input
+    id: integration_version
+    validations:
+      required: true
+    attributes:
+      label: What version of the Pura integration are you running?
+      placeholder: "1.8.1"
+      description: >-
+        Can be found in HACS, or in Settings ⇒ Devices & services ⇒ Pura.
   - type: input
     id: version
     validations:
@@ -29,13 +128,23 @@ body:
       label: What version of Home Assistant Core are you running?
       placeholder: core-
       description: >
+        Only the version number (e.g. `core-2026.10.1`), not the full system information.
         Can be found in: [Settings ⇒ System ⇒ Repairs ⇒ Three Dots in Upper Right ⇒ System information](https://my.home-assistant.io/redirect/system_health/).
 
         [![Open your Home Assistant instance and show the system information.](https://my.home-assistant.io/badges/system_health.svg)](https://my.home-assistant.io/redirect/system_health/)
+  - type: dropdown
+    id: installation_type
+    attributes:
+      label: How is Home Assistant installed?
+      options:
+        - Home Assistant OS
+        - Home Assistant Container
+        - Home Assistant Core
+        - Other (e.g. Kubernetes, please specify in the additional information field below)
   - type: input
     attributes:
-      label: What was the last working version of Home Assistant Core?
-      placeholder: core-
+      label: What was the last working version of the integration and/or Home Assistant Core?
+      placeholder: "1.8.0 / core-2026.9.3"
       description: >
         If known, otherwise leave blank.
   - type: markdown
@@ -43,20 +152,35 @@ body:
       value: |
         ## Details
   - type: textarea
+    validations:
+      required: true
     attributes:
       label: Diagnostics information
       placeholder: "drag-and-drop the diagnostics data file here (do not copy-and-paste the content)"
       description: >-
-        This integration provides the ability to [download diagnostic data](https://www.home-assistant.io/docs/configuration/troubleshooting/#debug-logs-and-diagnostics).
+        On the [Pura integration page](https://my.home-assistant.io/redirect/integration/?domain=pura), open the
+        three-dot menu and select **Download diagnostics**
+        ([more info](https://www.home-assistant.io/docs/configuration/troubleshooting/#download-diagnostics)).
+        **<ins>Drag-and-drop that file into the textbox below.</ins>** This is not the system information or the logs.
 
-        **It would really help if you could download the diagnostics data for the device you are having issues with,
-        and <ins>drag-and-drop that file into the textbox below.</ins>**
-
-        It generally allows pinpointing defects and thus resolving issues faster.
+        If the integration cannot be set up and diagnostics are unavailable, say so here and include logs below instead.
   - type: textarea
     attributes:
       label: Anything in the logs that might be useful?
-      description: For example, error message, or stack traces.
+      description: >-
+        For example, error messages or stack traces. For best results,
+        [enable debug logging](https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging)
+        for the Pura integration, reload it, reproduce the issue, then disable debug logging and attach the downloaded log.
+
+        If setup or sign-in fails, debug logging cannot be enabled from the integration page. Instead, add the following to
+        `configuration.yaml`, restart Home Assistant, try setting up the integration again, and attach the log:
+
+        ```yaml
+        logger:
+          logs:
+            custom_components.pura: debug
+            pypura: debug
+        ```
       render: txt
   - type: textarea
     attributes:
