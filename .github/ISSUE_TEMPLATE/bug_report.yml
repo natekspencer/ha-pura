@@ -167,13 +167,10 @@ body:
   - type: textarea
     attributes:
       label: Anything in the logs that might be useful?
-      description: >-
-        For example, error messages or stack traces. For best results,
-        [enable debug logging](https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging)
-        for the Pura integration, reload it, reproduce the issue, then disable debug logging and attach the downloaded log.
+      description: |-
+        For example, error messages or stack traces. For best results, [enable debug logging](https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging) for the Pura integration, reload it, reproduce the issue, then disable debug logging and attach the downloaded log.
 
-        If setup or sign-in fails, debug logging cannot be enabled from the integration page. Instead, add the following to
-        `configuration.yaml`, restart Home Assistant, try setting up the integration again, and attach the log:
+        If setup or sign-in fails, debug logging cannot be enabled from the integration page. Instead, add the following to `configuration.yaml`, restart Home Assistant, try setting up the integration again, and attach the log:
 
         ```yaml
         logger:
@@ -181,7 +178,6 @@ body:
             custom_components.pura: debug
             pypura: debug
         ```
-      render: txt
   - type: textarea
     attributes:
       label: Additional information
