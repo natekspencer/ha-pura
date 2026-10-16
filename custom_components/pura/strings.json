@@ -38,6 +38,17 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "bay_low_fragrance": {
+        "name": "Slot {bay} low fragrance"
+      },
+      "connected": {
+        "name": "Connected"
+      },
+      "low_fragrance": {
+        "name": "Low fragrance"
+      }
+    },
     "select": {
       "fragrance": {
         "name": "Fragrance",
