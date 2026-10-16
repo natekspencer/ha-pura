@@ -19,7 +19,9 @@ from homeassistant.util.color import color_rgb_to_hex, rgb_hex_to_rgb_list
 from . import PuraConfigEntry
 from .entity import PuraEntity
 
-LIGHT_DESCRIPTION = LightEntityDescription(key="nightlight", name="Nightlight")
+LIGHT_DESCRIPTION = LightEntityDescription(
+    key="nightlight", translation_key="nightlight"
+)
 
 
 async def async_setup_entry(

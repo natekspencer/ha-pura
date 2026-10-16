@@ -27,7 +27,7 @@ from .coordinator import PuraDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-SCHEDULE = CalendarEntityDescription(key="schedule")
+SCHEDULE = CalendarEntityDescription(key="schedule", translation_key="schedule")
 
 ONE_DAY = timedelta(days=1)
 
@@ -52,7 +52,6 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
     _calendar: Calendar | None = None
 
     _attr_has_entity_name = True
-    _attr_name = "Pura"
 
     def __init__(
         self,

@@ -227,3 +227,33 @@ async def _refresh(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     """Refresh the device coordinator."""
     await entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("device_id", "key", "entity_id", "name"),
+    [
+        (HOME_V3_ID, "ambient_mode", "switch.home_v3_ambient_mode", "Ambient mode"),
+        (HOME_V5_ID, "away_mode", "switch.home_v5_away_mode", "Away mode"),
+        (
+            HOME_V5_ID,
+            "diffusion_mode",
+            "switch.home_v5_auto_alternate_fragrances",
+            "Auto-alternate fragrances",
+        ),
+    ],
+)
+async def test_switch_names(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    init_integration: MockConfigEntry,
+    device_id: str,
+    key: str,
+    entity_id: str,
+    name: str,
+) -> None:
+    """Test switch names come from translations and keep their entity IDs."""
+    assert (
+        entity_registry.async_get_entity_id(SWITCH_DOMAIN, DOMAIN, f"{device_id}-{key}")
+        == entity_id
+    )
+    assert hass.states.get(entity_id).attributes["friendly_name"].endswith(name)

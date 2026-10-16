@@ -43,7 +43,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="intensity",
             translation_key="intensity",
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:fan",
             available_fn=lambda data: has_fragrance(data, 1),
             value_fn=lambda data: data["bay1"]["fanIntensity"],
         ),
@@ -61,7 +60,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="fragrance",
             translation_key="fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
@@ -69,7 +67,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="fragrance_remaining",
             translation_key="fragrance_remaining",
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
@@ -92,7 +89,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         PuraSensorEntityDescription(
             key="active_fragrance",
             translation_key="active_fragrance",
-            icon="mdi:scent",
             value_fn=lambda data: (
                 get_fragrance_name(data, 1)
                 if (bay := data["bay1"]) and bay["activeAt"]
@@ -108,7 +104,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance",
             translation_placeholders={"bay": 1},
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
@@ -117,7 +112,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance_remaining",
             translation_placeholders={"bay": 1},
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
@@ -151,7 +145,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance",
             translation_placeholders={"bay": "2"},
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             available_fn=lambda data: has_fragrance(data, 2),
             value_fn=lambda data: get_fragrance_name(data, 2),
         ),
@@ -160,7 +153,6 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance_remaining",
             translation_placeholders={"bay": "2"},
             entity_category=EntityCategory.DIAGNOSTIC,
-            icon="mdi:scent",
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,

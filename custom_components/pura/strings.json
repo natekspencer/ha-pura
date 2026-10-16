@@ -49,6 +49,16 @@
         "name": "Low fragrance"
       }
     },
+    "calendar": {
+      "schedule": {
+        "name": "Pura"
+      }
+    },
+    "light": {
+      "nightlight": {
+        "name": "Nightlight"
+      }
+    },
     "select": {
       "fragrance": {
         "name": "Fragrance",
@@ -121,6 +131,12 @@
       }
     },
     "switch": {
+      "ambient_mode": {
+        "name": "Ambient mode"
+      },
+      "away_mode": {
+        "name": "Away mode"
+      },
       "diffusion_mode": {
         "name": "Auto-alternate fragrances"
       }
