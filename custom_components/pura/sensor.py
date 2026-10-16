@@ -15,17 +15,21 @@ from pypura.utils import (
 )
 
 from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.dt import UTC, utc_from_timestamp
 
 from . import PuraConfigEntry
+from .const import DOMAIN
+from .coordinator import PuraDataUpdateCoordinator
 from .entity import PuraEntity
 
 
@@ -207,9 +211,8 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
     ),
     ("mini",): (
         PuraSensorEntityDescription(
-            key="bay_1_installed",
-            translation_key="bay_installed",
-            translation_placeholders={"bay": ""},
+            key="fragrance_installed",
+            translation_key="fragrance_installed",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
@@ -229,11 +232,50 @@ BATTERY_SENSOR = PuraSensorEntityDescription(
 )
 
 
+@callback
+def _async_migrate_entities(
+    hass: HomeAssistant, coordinator: PuraDataUpdateCoordinator
+) -> None:
+    """Migrate the Mini's installed sensor to match its other single-slot sensors.
+
+    The sensor used the dual-slot `bay_1_installed` key with an empty slot number,
+    resulting in a `..._slot_installed` entity ID.
+
+    TODO: Added in October 2026. Remove this migration, and its tests in
+    tests/test_sensor.py, in a release after April 2027.
+    """
+    entity_registry = er.async_get(hass)
+    for device_id, device in coordinator.data.items():
+        if device.get("modelType") != "mini":
+            continue
+        if not (
+            entity_id := entity_registry.async_get_entity_id(
+                SENSOR_DOMAIN, DOMAIN, f"{device_id}-bay_1_installed"
+            )
+        ):
+            continue
+        new_unique_id = f"{device_id}-fragrance_installed"
+        if entity_registry.async_get_entity_id(SENSOR_DOMAIN, DOMAIN, new_unique_id):
+            continue
+        updates: dict[str, Any] = {"new_unique_id": new_unique_id}
+        # Only rename entity IDs that have not been customized
+        if entity_id.endswith("_slot_installed"):
+            new_entity_id = (
+                f"{entity_id.removesuffix('_slot_installed')}_fragrance_installed"
+            )
+            if not entity_registry.async_is_registered(
+                new_entity_id
+            ) and hass.states.async_available(new_entity_id):
+                updates["new_entity_id"] = new_entity_id
+        entity_registry.async_update_entity(entity_id, **updates)
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: PuraConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Pura sensors using config entry."""
     coordinator = entry.runtime_data.coordinator
+    _async_migrate_entities(hass, coordinator)
     added_devices: set[tuple[str, str]] = set()
 
     def _check_devices() -> None:

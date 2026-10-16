@@ -114,6 +114,9 @@
       "fragrance": {
         "name": "Fragrance"
       },
+      "fragrance_installed": {
+        "name": "Fragrance installed"
+      },
       "fragrance_remaining": {
         "name": "Fragrance remaining"
       },
