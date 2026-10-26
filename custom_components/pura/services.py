@@ -13,6 +13,7 @@ from pypura.utils import (
 )
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import (
@@ -48,18 +49,20 @@ async def async_get_devices(call: ServiceCall) -> dict[str, PuraDataUpdateCoordi
     devices: dict[str, PuraDataUpdateCoordinator] = {}
 
     for entity_id in await async_extract_entity_ids(call):
-        entry = ent_reg.async_get(entity_id)
-        if entry and entry.config_entry_id and entry.device_id:
-            if (device_entry := dev_reg.async_get(entry.device_id)) is None:
+        entity_entry = ent_reg.async_get(entity_id)
+        if entity_entry and entity_entry.config_entry_id and entity_entry.device_id:
+            if (device_entry := dev_reg.async_get(entity_entry.device_id)) is None:
                 continue
-            if device_entry.serial_number and device_entry.serial_number not in devices:
-                for entry_id in device_entry.config_entries:
-                    if entry := hass.config_entries.async_get_entry(entry_id):
-                        if entry.domain == DOMAIN:
-                            devices[device_entry.serial_number] = (
-                                entry.runtime_data.coordinator
-                            )
-                            break
+            if (serial := device_entry.serial_number) and serial not in devices:
+                entry = hass.config_entries.async_get_entry(
+                    device_entry.config_entry_id
+                )
+                if (
+                    entry
+                    and entry.domain == DOMAIN
+                    and entry.state is ConfigEntryState.LOADED
+                ):
+                    devices[serial] = entry.runtime_data.coordinator
 
     return devices
 
