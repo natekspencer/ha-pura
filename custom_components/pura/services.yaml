@@ -52,3 +52,4 @@ start_timer:
         seconds: 0
       selector:
         duration:
+          enable_day: true

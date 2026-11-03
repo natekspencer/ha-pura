@@ -18,7 +18,7 @@
     "pypura"
   ],
   "requirements": [
-    "pypura==3.1.0",
+    "pypura==3.2.0",
     "ical"
   ],
   "version": "0.0.0"
