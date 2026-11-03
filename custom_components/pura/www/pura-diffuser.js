@@ -1,16 +1,17 @@
 /**
- * Pura Card — a Lovelace card for Pura smart fragrance diffusers.
+ * Pura Diffuser — a Lovelace card for Pura smart fragrance diffusers.
  *
  * Bundled with the Pura integration (https://github.com/natekspencer/ha-pura),
  * which serves and registers this file automatically. Point it at a Pura device
  * and it discovers that device's entities (fragrance slots, intensity, timer,
  * nightlight, away mode, ...) automatically via the entity registry.
  *
- * Originally created by sabourinj (https://github.com/sabourinj/ha-pura-card).
+ * Based on sabourinj's Pura card (https://github.com/sabourinj/ha-pura-card).
  *
  * MIT License
  *
  * Copyright (c) 2026 sabourinj
+ * Copyright (c) 2026 Nathan Spencer
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +48,8 @@ const DEFAULT_TIMER_DURATIONS = [30, 60, 120];
 // timedelta. Its maximum is 999,999,999 days 23:59:59.999999, so presets must stay below
 // 1,000,000,000 days; larger values overflow instead of being rejected cleanly.
 const MAX_TIMER_MINUTES = 1_000_000_000 * 24 * 60;
+// Accept a single number as well as a list.
+const timerDurations = (config) => [].concat(config.timer_durations ?? DEFAULT_TIMER_DURATIONS);
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -92,6 +95,7 @@ const fragranceTint = (hex, darkMode) => {
 // Two-slot sensors have a translation key per slot (e.g. "bay_2_runtime"). It's set by the
 // integration, so unlike the entity ID or name, renaming the entity can't change it.
 const BAY_KEY = /^bay_(\d)_(fragrance|fragrance_remaining|runtime)$/;
+const LOW_KEY = /^(?:bay_(\d)_)?low_fragrance$/;
 const BAY_FIELD = { fragrance: "name", fragrance_remaining: "remaining", runtime: "runtime" };
 
 const formatDuration = (minutes) => {
@@ -109,8 +113,11 @@ const formatRemaining = (ms) => {
   return m ? `${h} h ${m} min` : `${h} h`;
 };
 
-/** Find a Pura device's entities using registry translation keys and names. */
-function discoverEntities(hass, deviceId, overrides = {}) {
+/**
+ * Find a Pura device's entities by their registry translation keys. The card ships with
+ * the integration, so these always match the keys of the integration that serves it.
+ */
+function discoverEntities(hass, deviceId) {
   const found = { bays: {} };
   const entries = Object.values(hass.entities || {}).filter(
     (e) => e.device_id === deviceId && (!e.platform || e.platform === "pura")
@@ -123,6 +130,7 @@ function discoverEntities(hass, deviceId, overrides = {}) {
     const domain = id.split(".")[0];
     const key = entry.translation_key;
     const bayKey = domain === "sensor" && BAY_KEY.exec(key || "");
+    let lowKey;
 
     if (bayKey) bay(Number(bayKey[1]))[BAY_FIELD[bayKey[2]]] = id;
     else if (domain === "select" && key === "fragrance") found.fragrance = id;
@@ -141,22 +149,15 @@ function discoverEntities(hass, deviceId, overrides = {}) {
     else if (domain === "switch" && key === "ambient_mode") found.ambient_mode = id;
     else if (domain === "light") found.nightlight = id;
     else if (domain === "binary_sensor" && key === "connected") found.connected = id;
-    else if (domain === "binary_sensor" && /^(bay_\d_)?low_fragrance$/.test(key || ""))
-      found.low_fragrance = id;
-  }
-
-  // Explicit overrides from YAML win over discovery.
-  for (const [key, value] of Object.entries(overrides || {})) {
-    const slotMatch = key.match(/^slot_(\d)_(name|remaining|runtime)$/);
-    if (slotMatch) bay(Number(slotMatch[1]))[slotMatch[2]] = value;
-    else found[key] = value;
+    else if (domain === "binary_sensor" && (lowKey = LOW_KEY.exec(key || "")))
+      bay(Number(lowKey[1] || 1)).low = id;
   }
   return found;
 }
 
-class PuraCard extends HTMLElement {
+class PuraDiffuserCard extends HTMLElement {
   static getConfigElement() {
-    return document.createElement("pura-card-editor");
+    return document.createElement("pura-diffuser-editor");
   }
 
   static getStubConfig(hass) {
@@ -273,17 +274,15 @@ class PuraCard extends HTMLElement {
       case "bay": {
         const option = `slot_${value}`;
         if (!e.fragrance) return this._moreInfo(e.bays[value]?.name);
-        this._call("select", "select_option", {
-          entity_id: e.fragrance,
-          option: this._activeOption() === option ? "off" : option,
-        });
+        this._selectFragrance(this._activeOption() === option ? "off" : option);
         break;
       }
-      case "power": {
-        const option = this._activeOption() ? "off" : this._bestSlotOption();
-        if (option) this._call("select", "select_option", { entity_id: e.fragrance, option });
+      case "power":
+        this._selectFragrance(this._activeOption() ? "off" : this._bestSlotOption());
         break;
-      }
+      case "stop":
+        this._selectFragrance("off");
+        break;
       case "intensity":
         this._call("select", "select_option", { entity_id: e.intensity, option: value });
         break;
@@ -327,15 +326,27 @@ class PuraCard extends HTMLElement {
     return matches[0] || selectedSlot;
   }
 
+  /** The Fragrance select's options for installed slots, without "off". */
+  _slotOptions() {
+    return (this._state(this._entities.fragrance)?.attributes.options || []).filter((o) => o !== "off");
+  }
+
+  /** Start a slot ("slot_N") or stop diffusing ("off") through the Fragrance select. */
+  _selectFragrance(option) {
+    const entity = this._entities.fragrance;
+    if (entity && option) this._call("select", "select_option", { entity_id: entity, option });
+  }
+
   /** The installed slot with the most fragrance left (matches the integration's timer logic). */
   _bestSlotOption() {
-    const options = (this._state(this._entities.fragrance)?.attributes.options || []).filter(
-      (o) => o !== "off"
-    );
+    const options = this._slotOptions();
     if (!options.length) return undefined;
-    const remaining = (option) =>
-      Number(this._state(this._entities.bays[option.replace("slot_", "")]?.remaining)?.state) || 0;
-    return options.sort((a, b) => remaining(b) - remaining(a))[0];
+    const value = (option, field) =>
+      Number(this._state(this._entities.bays[option.replace("slot_", "")]?.[field])?.state) || 0;
+    // Most remaining first, then the least runtime, like pura.start_timer.
+    return options.sort(
+      (a, b) => value(b, "remaining") - value(a, "remaining") || value(a, "runtime") - value(b, "runtime")
+    )[0];
   }
 
   _startTimer(minutes) {
@@ -364,18 +375,18 @@ class PuraCard extends HTMLElement {
     }
 
     // hass updates on every state change in the house, but the entity mapping only
-    // changes with the registry or config, so only rediscover when those change.
-    const inputs = [this._hass.entities, config.device_id, config.entities];
+    // changes with the registry or device, so only rediscover when those change.
+    const inputs = [this._hass.entities, config.device_id];
     if (!this._discoveredFrom || inputs.some((value, i) => value !== this._discoveredFrom[i])) {
-      this._entities = discoverEntities(this._hass, config.device_id, config.entities);
+      this._entities = discoverEntities(this._hass, config.device_id);
       this._discoveredFrom = inputs;
     }
     const e = this._entities;
     const ids = [
       e.fragrance, e.intensity, e.active_fragrance, e.controller, e.timer, e.battery,
       e.fan_intensity, e.auto_alternate, e.away_mode, e.ambient_mode, e.nightlight,
-      e.connected, e.low_fragrance,
-      ...Object.values(e.bays).flatMap((b) => [b.name, b.remaining, b.runtime]),
+      e.connected,
+      ...Object.values(e.bays).flatMap((b) => [b.name, b.remaining, b.runtime, b.low]),
     ].filter(Boolean);
 
     const device = this._hass.devices?.[config.device_id];
@@ -519,7 +530,12 @@ class PuraCard extends HTMLElement {
       const known = !empty && Number.isFinite(remaining);
       const pct = known ? Math.max(0, Math.min(100, remaining)) : 0;
       const active = activeOption === `slot_${bay.slot}`;
-      const low = known && pct <= (this._config.low_threshold ?? 15);
+      // Use Pura's own low fragrance flag unless a threshold is configured.
+      const lowState = this._state(bay.low);
+      const threshold = this._config.low_threshold;
+      const low =
+        known &&
+        (threshold == null && !isUnavailable(lowState) ? lowState.state === "on" : pct <= (threshold ?? 15));
       const hue = fragranceHue(name);
       const disabled = empty || (locked && !!this._entities.fragrance);
       const picture = empty ? undefined : nameState?.attributes?.entity_picture;
@@ -586,15 +602,15 @@ class PuraCard extends HTMLElement {
         <div class="section timer-active">
           <ha-icon icon="mdi:timer-sand"></ha-icon>
           <div class="timer-text"><b>${esc(formatRemaining(remaining))}</b> left · ends ${esc(endText)}</div>
-          <button class="pill" data-action="power" ${locked ? "disabled" : ""}>Stop</button>
+          <button class="pill" data-action="stop" ${locked ? "disabled" : ""}>Stop</button>
         </div>`;
     }
 
-    const durations = (this._config.timer_durations || DEFAULT_TIMER_DURATIONS)
+    const durations = timerDurations(this._config)
       .map(Number)
       .filter((m) => Number.isFinite(m) && m > 0 && m < MAX_TIMER_MINUTES);
     // pura.start_timer fails when no fragrance is installed, so don't offer it.
-    const disabled = locked || !this._bestSlotOption();
+    const disabled = locked || !this._slotOptions().length;
     return `
       <div class="section">
         <div class="section-head"><span>Timer</span></div>
@@ -845,7 +861,7 @@ const EDITOR_LABELS = {
   timer_durations: "Timer presets",
 };
 
-class PuraCardEditor extends HTMLElement {
+class PuraDiffuserCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
@@ -893,19 +909,20 @@ class PuraCardEditor extends HTMLElement {
       show_nightlight: true,
       show_settings: true,
       ...this._config,
-      timer_durations: (this._config.timer_durations || DEFAULT_TIMER_DURATIONS).map(String),
+      timer_durations: timerDurations(this._config).map(String),
     };
   }
 }
 
-if (!customElements.get("pura-card")) customElements.define("pura-card", PuraCard);
-if (!customElements.get("pura-card-editor")) customElements.define("pura-card-editor", PuraCardEditor);
+if (!customElements.get("pura-diffuser")) customElements.define("pura-diffuser", PuraDiffuserCard);
+if (!customElements.get("pura-diffuser-editor"))
+  customElements.define("pura-diffuser-editor", PuraDiffuserCardEditor);
 
 window.customCards = window.customCards || [];
-if (!window.customCards.some((c) => c.type === "pura-card")) {
+if (!window.customCards.some((c) => c.type === "pura-diffuser")) {
   window.customCards.push({
-    type: "pura-card",
-    name: "Pura Card",
+    type: "pura-diffuser",
+    name: "Pura Diffuser",
     description: "Control a Pura smart fragrance diffuser: slots, intensity, timers, nightlight and away mode.",
     preview: true,
     documentationURL: "https://github.com/natekspencer/ha-pura#-dashboard-card",
@@ -913,7 +930,7 @@ if (!window.customCards.some((c) => c.type === "pura-card")) {
 }
 
 console.info(
-  `%c PURA-CARD %c v${CARD_VERSION} `,
+  `%c PURA-DIFFUSER %c v${CARD_VERSION} `,
   "color:#fff;background:#7b5cd6;font-weight:700;border-radius:3px 0 0 3px",
   "color:#7b5cd6;background:#f1edff;border-radius:0 3px 3px 0"
 );

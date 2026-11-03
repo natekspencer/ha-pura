@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from pypura.utils import (
+    dig,
     get_fragrance_name,
     get_fragrance_remaining,
     get_fragrance_runtime,
@@ -37,19 +38,14 @@ from .entity import PuraEntity
 HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 
 
-def _get_fragrance(device: dict[str, Any], bay: int) -> dict[str, Any]:
-    """Get the fragrance details for a bay."""
-    return (device.get(f"bay{bay}") or {}).get("fragrance") or {}
-
-
 def get_fragrance_vial_url(device: dict[str, Any], bay: int) -> str | None:
     """Get the URL of the fragrance vial image for a bay."""
-    return _get_fragrance(device, bay).get("vialUrl") or None
+    return dig(device, f"bay{bay}.fragrance.vialUrl") or None
 
 
 def get_fragrance_attributes(device: dict[str, Any], bay: int) -> dict[str, Any]:
     """Get the extra state attributes for a bay's fragrance."""
-    color = _get_fragrance(device, bay).get("placeholderColor")
+    color = dig(device, f"bay{bay}.fragrance.placeholderColor")
     if isinstance(color, str) and (match := HEX_COLOR.fullmatch(color.strip())):
         return {"color": f"#{match[1].upper()}"}
     return {}

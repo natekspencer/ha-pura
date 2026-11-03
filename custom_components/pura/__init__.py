@@ -41,7 +41,7 @@ PLATFORMS = [
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-CARD_FILENAME = "pura-card.js"
+CARD_FILENAME = "pura-diffuser.js"
 CARD_URL = f"/{DOMAIN}/{CARD_FILENAME}"
 
 
