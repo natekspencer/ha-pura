@@ -129,7 +129,7 @@ type: custom:pura-card
 device_id: 0123456789abcdef0123456789abcdef
 ```
 
-The card shows each fragrance slot as a vial filled to the percentage left. When Pura provides a picture of the fragrance's vial, the card shows that instead, with a bar for the amount left. Tap a slot to start or stop it. On Car diffusers, which can't be controlled from Home Assistant, tapping a slot opens its details instead. It also has a power button, intensity, timer presets with a countdown, the nightlight, and the Auto-alternate, Ambient and Away mode toggles that your device supports.
+The card shows each fragrance slot as a vial filled to the percentage left. When Pura provides a picture of the fragrance's vial, the card shows that instead, with a bar for the amount left. Tap a slot to start or stop it. On Car diffusers, which can't be controlled from Home Assistant, tapping a slot opens its details instead. Depending on what your device supports, the card also shows a power button, intensity, timer presets with a countdown, the nightlight, and the Auto-alternate, Ambient and Away mode toggles. Each appears only when the device has it, so Car diffusers show none of these controls, and models without a nightlight (such as the Plus) don't show the nightlight toggle.
 
 | Option            | Type    | Default         | Description                                                    |
 | ----------------- | ------- | --------------- | -------------------------------------------------------------- |
