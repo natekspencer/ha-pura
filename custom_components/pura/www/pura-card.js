@@ -191,6 +191,7 @@ class PuraCard extends HTMLElement {
       ...config,
     };
     this._renderKey = "";
+    this._discoveredFrom = undefined;
     if (this._hass) this._render();
   }
 
@@ -369,7 +370,14 @@ class PuraCard extends HTMLElement {
       return;
     }
 
-    const e = (this._entities = discoverEntities(this._hass, config.device_id, config.entities));
+    // hass updates on every state change in the house, but the entity mapping only
+    // changes with the registry or config, so only rediscover when those change.
+    const inputs = [this._hass.entities, config.device_id, config.entities];
+    if (!this._discoveredFrom || inputs.some((value, i) => value !== this._discoveredFrom[i])) {
+      this._entities = discoverEntities(this._hass, config.device_id, config.entities);
+      this._discoveredFrom = inputs;
+    }
+    const e = this._entities;
     const ids = [
       e.fragrance, e.intensity, e.active_fragrance, e.controller, e.timer, e.battery,
       e.fan_intensity, e.auto_alternate, e.away_mode, e.ambient_mode, e.nightlight,
