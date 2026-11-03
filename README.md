@@ -111,7 +111,49 @@ A single **Pura** calendar entity also shows the schedules for all of your devic
 
 > ℹ️ Pura devices do not measure how much oil is left. Fragrance remaining is an estimate calculated by Pura based on runtime and intensity, and matches what the Pura app shows.
 
-For a dashboard card designed for these entities, see the community-made [Pura card](https://github.com/sabourinj/ha-pura-card).
+## 🎛️ Dashboard card
+
+The integration includes a Pura dashboard card, originally created by [sabourinj](https://github.com/sabourinj/ha-pura-card). It loads automatically, so you don't need to add a dashboard resource.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/card-dark.png">
+    <img alt="Pura cards for two two-slot home diffusers, showing each slot's fragrance vial and amount left with intensity, timer, nightlight and mode controls, and for two Pura Car diffusers with their fragrance pods and battery level" src="docs/card-light.png">
+  </picture>
+</p>
+
+Add **Pura Card** from the dashboard card picker and choose your device, or use YAML:
+
+```yaml
+type: custom:pura-card
+device_id: 0123456789abcdef0123456789abcdef
+```
+
+The card shows each fragrance slot as a vial filled to the percentage left. When Pura provides a picture of the fragrance's vial, the card shows that instead, with a bar for the amount left. Tap a slot to start or stop it. It also has a power button, intensity, timer presets with a countdown, the nightlight, and the Auto-alternate, Ambient and Away mode toggles that your device supports.
+
+| Option            | Type    | Default         | Description                                                    |
+| ----------------- | ------- | --------------- | -------------------------------------------------------------- |
+| `device_id`       | string  | **required**    | The Pura device (the visual editor gives you a picker).        |
+| `name`            | string  | device name     | Overrides the card title.                                      |
+| `show_intensity`  | boolean | `true`          | Show the intensity control.                                    |
+| `show_timer`      | boolean | `true`          | Show the timer presets and countdown.                          |
+| `show_nightlight` | boolean | `true`          | Show the nightlight toggle.                                    |
+| `show_settings`   | boolean | `true`          | Show the Auto-alternate, Ambient and Away mode toggles.        |
+| `timer_durations` | list    | `[30, 60, 120]` | Timer preset lengths in minutes.                               |
+| `timer_intensity` | number  | `5`             | Intensity (1–10) for timers started while the diffuser is off. |
+| `low_threshold`   | number  | `15`            | Show the "% left" in red at or below this percentage.          |
+| `entities`        | map     | auto            | Overrides for auto-discovered entities (see below).            |
+
+The card finds the device's entities by their translation keys, so renamed entity IDs still work. If it misses one, set it under `entities`. The available keys are `fragrance`, `intensity`, `active_fragrance`, `controller`, `timer`, `battery`, `nightlight`, `away_mode`, `ambient_mode`, `auto_alternate`, `connected`, and `slot_N_name`, `slot_N_remaining` and `slot_N_runtime`:
+
+```yaml
+type: custom:pura-card
+device_id: 0123456789abcdef0123456789abcdef
+entities:
+  slot_1_remaining: sensor.living_room_slot_1_fragrance_remaining
+```
+
+> ℹ️ If you installed the card separately from HACS before, you can remove it and its dashboard resource. If both are installed, the one that loads first is used.
 
 ## 🎬 Actions
 

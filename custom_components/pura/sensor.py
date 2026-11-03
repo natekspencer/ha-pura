@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import re
 from typing import Any
 
 from pypura.utils import (
@@ -33,12 +34,34 @@ from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
 from .entity import PuraEntity
 
+HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
+
+
+def _get_fragrance(device: dict[str, Any], bay: int) -> dict[str, Any]:
+    """Get the fragrance details for a bay."""
+    return (device.get(f"bay{bay}") or {}).get("fragrance") or {}
+
+
+def get_fragrance_vial_url(device: dict[str, Any], bay: int) -> str | None:
+    """Get the URL of the fragrance vial image for a bay."""
+    return _get_fragrance(device, bay).get("vialUrl") or None
+
+
+def get_fragrance_attributes(device: dict[str, Any], bay: int) -> dict[str, Any]:
+    """Get the extra state attributes for a bay's fragrance."""
+    color = _get_fragrance(device, bay).get("placeholderColor")
+    if isinstance(color, str) and (match := HEX_COLOR.fullmatch(color.strip())):
+        return {"color": f"#{match[1].upper()}"}
+    return {}
+
 
 @dataclass(frozen=True, kw_only=True)
 class PuraSensorEntityDescription(SensorEntityDescription):
     """Pura sensor entity description."""
 
+    attributes_fn: Callable[[dict], dict[str, Any]] | None = None
     available_fn: Callable[[dict], bool] | None = None
+    picture_fn: Callable[[dict], str | None] | None = None
     value_fn: Callable[[dict], Any | None]
 
 
@@ -65,7 +88,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="fragrance",
             translation_key="fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 1),
             available_fn=lambda data: has_fragrance(data, 1),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
@@ -109,7 +134,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance",
             translation_placeholders={"bay": 1},
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 1),
             available_fn=lambda data: has_fragrance(data, 1),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
@@ -150,7 +177,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             translation_key="bay_fragrance",
             translation_placeholders={"bay": "2"},
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 2),
             available_fn=lambda data: has_fragrance(data, 2),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 2),
             value_fn=lambda data: get_fragrance_name(data, 2),
         ),
         PuraSensorEntityDescription(
@@ -335,6 +364,20 @@ class PuraSensorEntity(PuraEntity, SensorEntity):
         if available_fn := self.entity_description.available_fn:
             return available_fn(self.get_device())
         return super().available
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the fragrance color, if any."""
+        if attributes_fn := self.entity_description.attributes_fn:
+            return attributes_fn(self.get_device()) or None
+        return None
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return the fragrance vial image, if any."""
+        if picture_fn := self.entity_description.picture_fn:
+            return picture_fn(self.get_device())
+        return super().entity_picture
 
     @property
     def native_value(self) -> str | int | datetime | None:

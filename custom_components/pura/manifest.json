@@ -5,6 +5,10 @@
     "@natekspencer"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
   "documentation": "https://github.com/natekspencer/ha-pura",
   "integration_type": "hub",
   "iot_class": "cloud_polling",

@@ -91,7 +91,12 @@
         "name": "Battery"
       },
       "bay_fragrance": {
-        "name": "Slot {bay} fragrance"
+        "name": "Slot {bay} fragrance",
+        "state_attributes": {
+          "color": {
+            "name": "Color"
+          }
+        }
       },
       "bay_fragrance_remaining": {
         "name": "Slot {bay} fragrance remaining"
@@ -112,7 +117,12 @@
         }
       },
       "fragrance": {
-        "name": "Fragrance"
+        "name": "Fragrance",
+        "state_attributes": {
+          "color": {
+            "name": "Color"
+          }
+        }
       },
       "fragrance_installed": {
         "name": "Fragrance installed"

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from pypura import Pura, PuraAuthenticationError
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_ACCESS_TOKEN,
@@ -18,6 +21,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from .const import CONF_ID_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
@@ -37,6 +41,9 @@ PLATFORMS = [
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+CARD_FILENAME = "pura-card.js"
+CARD_URL = f"/{DOMAIN}/{CARD_FILENAME}"
+
 
 @dataclass
 class PuraIntegrationData:
@@ -49,7 +56,24 @@ class PuraIntegrationData:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Pura integration."""
     async_setup_services(hass)
+    await _async_register_card(hass)
     return True
+
+
+async def _async_register_card(hass: HomeAssistant) -> None:
+    """Serve the bundled Pura card and load it on every dashboard."""
+    integration = await async_get_integration(hass, DOMAIN)
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_URL,
+                str(Path(__file__).parent / "www" / CARD_FILENAME),
+                cache_headers=False,
+            )
+        ]
+    )
+    # The version query string busts the browser cache after an upgrade
+    add_extra_js_url(hass, f"{CARD_URL}?v={integration.version}")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool:
