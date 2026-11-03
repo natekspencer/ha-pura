@@ -131,8 +131,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1",
-            translation_key="bay_fragrance",
-            translation_placeholders={"bay": 1},
+            translation_key="bay_1_fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
             attributes_fn=lambda data: get_fragrance_attributes(data, 1),
             available_fn=lambda data: has_fragrance(data, 1),
@@ -141,8 +140,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1_fragrance_remaining",
-            translation_key="bay_fragrance_remaining",
-            translation_placeholders={"bay": 1},
+            translation_key="bay_1_fragrance_remaining",
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -152,8 +150,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1_runtime",
-            translation_key="bay_runtime",
-            translation_placeholders={"bay": "1"},
+            translation_key="bay_1_runtime",
             device_class=SensorDeviceClass.DURATION,
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=UnitOfTime.SECONDS,
@@ -164,8 +161,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1_installed",
-            translation_key="bay_installed",
-            translation_placeholders={"bay": "1"},
+            translation_key="bay_1_installed",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
@@ -174,8 +170,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2",
-            translation_key="bay_fragrance",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
             attributes_fn=lambda data: get_fragrance_attributes(data, 2),
             available_fn=lambda data: has_fragrance(data, 2),
@@ -184,8 +179,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2_fragrance_remaining",
-            translation_key="bay_fragrance_remaining",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_fragrance_remaining",
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -195,8 +189,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2_runtime",
-            translation_key="bay_runtime",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_runtime",
             device_class=SensorDeviceClass.DURATION,
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=UnitOfTime.SECONDS,
@@ -207,8 +200,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2_installed",
-            translation_key="bay_installed",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_installed",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,

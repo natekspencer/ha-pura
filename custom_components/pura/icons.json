@@ -22,10 +22,16 @@
       "active_fragrance": {
         "default": "mdi:scent"
       },
-      "bay_fragrance": {
+      "bay_1_fragrance": {
         "default": "mdi:scent"
       },
-      "bay_fragrance_remaining": {
+      "bay_1_fragrance_remaining": {
+        "default": "mdi:scent"
+      },
+      "bay_2_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_2_fragrance_remaining": {
         "default": "mdi:scent"
       },
       "controller": {

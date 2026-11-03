@@ -43,6 +43,10 @@ const CONTROLLER_LABEL = {
   away: "Away",
 };
 const DEFAULT_TIMER_DURATIONS = [30, 60, 120];
+// pura.start_timer validates `duration` with cv.positive_time_period, which builds a Python
+// timedelta. Its maximum is 999,999,999 days 23:59:59.999999, so presets must stay below
+// 1,000,000,000 days; larger values overflow instead of being rejected cleanly.
+const MAX_TIMER_MINUTES = 1_000_000_000 * 24 * 60;
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -85,14 +89,10 @@ const fragranceTint = (hex, darkMode) => {
   return `hsl(${Math.round((h * 60 + 360) % 360)} ${Math.round(sat * 100)}% ${Math.round(light * 100)}%)`;
 };
 
-const slotFromEntity = (entityId, stateObj) => {
-  // The slot marker comes after the device name in the entity ID, so use the last one
-  // (a device named e.g. "Slot 1 Room" would otherwise win).
-  const match =
-    [...entityId.matchAll(/slot_(\d)/g)].pop() ||
-    String(stateObj?.attributes?.friendly_name || "").match(/slot\s*(\d)/i);
-  return match ? Number(match[1]) : undefined;
-};
+// Two-slot sensors have a translation key per slot (e.g. "bay_2_runtime"). It's set by the
+// integration, so unlike the entity ID or name, renaming the entity can't change it.
+const BAY_KEY = /^bay_(\d)_(fragrance|fragrance_remaining|runtime)$/;
+const BAY_FIELD = { fragrance: "name", fragrance_remaining: "remaining", runtime: "runtime" };
 
 const formatDuration = (minutes) => {
   if (minutes < 60) return `${minutes}m`;
@@ -117,30 +117,21 @@ function discoverEntities(hass, deviceId, overrides = {}) {
   );
 
   const bay = (slot) => (found.bays[slot] ||= { slot });
-  // Two-slot sensors without a recognisable slot are skipped rather than guessed;
-  // they can still be set explicitly via `entities` overrides.
-  const assignSlot = (id, stateObj, field) => {
-    const slot = slotFromEntity(id, stateObj);
-    if (slot) bay(slot)[field] = id;
-  };
 
   for (const entry of entries) {
     const id = entry.entity_id;
     const domain = id.split(".")[0];
     const key = entry.translation_key;
-    const stateObj = hass.states[id];
+    const bayKey = domain === "sensor" && BAY_KEY.exec(key || "");
 
-    if (domain === "select" && key === "fragrance") found.fragrance = id;
+    if (bayKey) bay(Number(bayKey[1]))[BAY_FIELD[bayKey[2]]] = id;
+    else if (domain === "select" && key === "fragrance") found.fragrance = id;
     else if (domain === "select" && key === "intensity") found.intensity = id;
     else if (domain === "sensor" && key === "active_fragrance") found.active_fragrance = id;
     else if (domain === "sensor" && key === "controller") found.controller = id;
     else if (domain === "sensor" && key === "timer") found.timer = id;
     else if (domain === "sensor" && key === "battery") found.battery = id;
     else if (domain === "sensor" && key === "intensity") found.fan_intensity = id; // Pura Car
-    else if (domain === "sensor" && key === "bay_fragrance") assignSlot(id, stateObj, "name");
-    else if (domain === "sensor" && key === "bay_fragrance_remaining")
-      assignSlot(id, stateObj, "remaining");
-    else if (domain === "sensor" && key === "bay_runtime") assignSlot(id, stateObj, "runtime");
     // Single-slot devices (Mini, Car)
     else if (domain === "sensor" && key === "fragrance") bay(1).name = id;
     else if (domain === "sensor" && key === "fragrance_remaining") bay(1).remaining = id;
@@ -150,7 +141,7 @@ function discoverEntities(hass, deviceId, overrides = {}) {
     else if (domain === "switch" && key === "ambient_mode") found.ambient_mode = id;
     else if (domain === "light") found.nightlight = id;
     else if (domain === "binary_sensor" && key === "connected") found.connected = id;
-    else if (domain === "binary_sensor" && (key === "low_fragrance" || key === "bay_low_fragrance"))
+    else if (domain === "binary_sensor" && /^(bay_\d_)?low_fragrance$/.test(key || ""))
       found.low_fragrance = id;
   }
 
@@ -601,7 +592,7 @@ class PuraCard extends HTMLElement {
 
     const durations = (this._config.timer_durations || DEFAULT_TIMER_DURATIONS)
       .map(Number)
-      .filter((m) => Number.isFinite(m) && m > 0);
+      .filter((m) => Number.isFinite(m) && m > 0 && m < MAX_TIMER_MINUTES);
     // pura.start_timer fails when no fragrance is installed, so don't offer it.
     const disabled = locked || !this._bestSlotOption();
     return `

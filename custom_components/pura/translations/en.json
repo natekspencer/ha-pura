@@ -39,8 +39,11 @@
   },
   "entity": {
     "binary_sensor": {
-      "bay_low_fragrance": {
-        "name": "Slot {bay} low fragrance"
+      "bay_1_low_fragrance": {
+        "name": "Slot 1 low fragrance"
+      },
+      "bay_2_low_fragrance": {
+        "name": "Slot 2 low fragrance"
       },
       "connected": {
         "name": "Connected"
@@ -90,22 +93,39 @@
       "battery": {
         "name": "Battery"
       },
-      "bay_fragrance": {
-        "name": "Slot {bay} fragrance",
+      "bay_1_fragrance": {
+        "name": "Slot 1 fragrance",
         "state_attributes": {
           "color": {
             "name": "Color"
           }
         }
       },
-      "bay_fragrance_remaining": {
-        "name": "Slot {bay} fragrance remaining"
+      "bay_1_fragrance_remaining": {
+        "name": "Slot 1 fragrance remaining"
       },
-      "bay_installed": {
-        "name": "Slot {bay} installed"
+      "bay_1_installed": {
+        "name": "Slot 1 installed"
       },
-      "bay_runtime": {
-        "name": "Slot {bay} runtime"
+      "bay_1_runtime": {
+        "name": "Slot 1 runtime"
+      },
+      "bay_2_fragrance": {
+        "name": "Slot 2 fragrance",
+        "state_attributes": {
+          "color": {
+            "name": "Color"
+          }
+        }
+      },
+      "bay_2_fragrance_remaining": {
+        "name": "Slot 2 fragrance remaining"
+      },
+      "bay_2_installed": {
+        "name": "Slot 2 installed"
+      },
+      "bay_2_runtime": {
+        "name": "Slot 2 runtime"
       },
       "controller": {
         "name": "Controller",
