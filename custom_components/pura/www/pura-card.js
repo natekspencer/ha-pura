@@ -398,7 +398,7 @@ class PuraCard extends HTMLElement {
         const s = this._hass.states[id];
         return s && [
           s.state, s.attributes.unit_of_measurement, s.attributes.rgb_color, s.attributes.options,
-          s.attributes.friendly_name,
+          s.attributes.friendly_name, s.attributes.icon,
           s.attributes.entity_picture, s.attributes.color,
         ];
       }),
@@ -416,6 +416,11 @@ class PuraCard extends HTMLElement {
     this._renderKey = key;
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>${html}`;
     // Fall back to the drawn vial if a fragrance image can't be loaded.
+    // ha-state-icon takes its state as properties, which innerHTML can't set.
+    for (const icon of this.shadowRoot.querySelectorAll("ha-state-icon[data-entity]")) {
+      icon.hass = this._hass;
+      icon.stateObj = this._state(icon.dataset.entity);
+    }
     for (const img of this.shadowRoot.querySelectorAll(".vial-img")) {
       img.addEventListener("error", () => img.closest(".bay")?.classList.remove("has-img"), {
         once: true,
@@ -467,7 +472,14 @@ class PuraCard extends HTMLElement {
       );
     const battery = this._state(e.battery);
     if (battery && !isUnavailable(battery))
-      chips.push(`<span class="chip"><ha-icon icon="mdi:battery"></ha-icon>${esc(battery.state)}%</span>`);
+      chips.push(
+        // Same icon Home Assistant shows for the entity (level-based, or the user's own icon).
+        `<span class="chip">${
+          customElements.get("ha-state-icon")
+            ? `<ha-state-icon data-entity="${esc(e.battery)}"></ha-state-icon>`
+            : `<ha-icon icon="mdi:battery"></ha-icon>`
+        }${esc(battery.state)}%</span>`
+      );
 
     const badgeEntity = e.fragrance || e.active_fragrance;
     const power = e.fragrance
@@ -681,7 +693,7 @@ const STYLES = `
     display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 8px; border-radius: 12px;
     background: var(--secondary-background-color); color: var(--secondary-text-color);
   }
-  .chip ha-icon { --mdc-icon-size: 14px; }
+  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 14px; }
   .chip.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 18%, transparent); color: var(--warning-color, #ffa600); }
   .power {
     width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center;
