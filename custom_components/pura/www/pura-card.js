@@ -89,7 +89,7 @@ const slotFromEntity = (entityId, stateObj) => {
   const match =
     entityId.match(/slot_(\d)/) ||
     String(stateObj?.attributes?.friendly_name || "").match(/slot\s*(\d)/i);
-  return match ? Number(match[1]) : 1;
+  return match ? Number(match[1]) : undefined;
 };
 
 const formatDuration = (minutes) => {
@@ -115,6 +115,12 @@ function discoverEntities(hass, deviceId, overrides = {}) {
   );
 
   const bay = (slot) => (found.bays[slot] ||= { slot });
+  // Two-slot sensors without a recognisable slot are skipped rather than guessed;
+  // they can still be set explicitly via `entities` overrides.
+  const assignSlot = (id, stateObj, field) => {
+    const slot = slotFromEntity(id, stateObj);
+    if (slot) bay(slot)[field] = id;
+  };
 
   for (const entry of entries) {
     const id = entry.entity_id;
@@ -129,12 +135,10 @@ function discoverEntities(hass, deviceId, overrides = {}) {
     else if (domain === "sensor" && key === "timer") found.timer = id;
     else if (domain === "sensor" && key === "battery") found.battery = id;
     else if (domain === "sensor" && key === "intensity") found.fan_intensity = id; // Pura Car
-    else if (domain === "sensor" && key === "bay_fragrance")
-      bay(slotFromEntity(id, stateObj)).name = id;
+    else if (domain === "sensor" && key === "bay_fragrance") assignSlot(id, stateObj, "name");
     else if (domain === "sensor" && key === "bay_fragrance_remaining")
-      bay(slotFromEntity(id, stateObj)).remaining = id;
-    else if (domain === "sensor" && key === "bay_runtime")
-      bay(slotFromEntity(id, stateObj)).runtime = id;
+      assignSlot(id, stateObj, "remaining");
+    else if (domain === "sensor" && key === "bay_runtime") assignSlot(id, stateObj, "runtime");
     // Single-slot devices (Mini, Car)
     else if (domain === "sensor" && key === "fragrance") bay(1).name = id;
     else if (domain === "sensor" && key === "fragrance_remaining") bay(1).remaining = id;
@@ -373,9 +377,13 @@ class PuraCard extends HTMLElement {
       ...Object.values(e.bays).flatMap((b) => [b.name, b.remaining, b.runtime]),
     ].filter(Boolean);
 
+    const device = this._hass.devices?.[config.device_id];
     const key = JSON.stringify([
       config,
       !!this._hass.themes?.darkMode,
+      !!this._hass.user?.is_admin,
+      [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
+      e, // which entity fills each role, so swapping one for another rerenders
       ids.map((id) => {
         const s = this._hass.states[id];
         return s && [
@@ -458,9 +466,10 @@ class PuraCard extends HTMLElement {
     return `
       <ha-card class="${running ? "running" : ""} ${e.fan_intensity ? "car" : ""}">
         <div class="header">
-          <div class="badge" data-action="more-info" data-value="${esc(e.fragrance || e.active_fragrance || "")}">
+          <button class="badge" data-action="more-info" data-value="${esc(e.fragrance || e.active_fragrance || "")}"
+            title="Fragrance">
             <ha-icon icon="mdi:scent"></ha-icon>
-          </div>
+          </button>
           <div class="titles">
             ${hass.user?.is_admin && device
               ? `<button class="title link" data-action="device" title="Open device page">
@@ -490,9 +499,12 @@ class PuraCard extends HTMLElement {
       const runtimeState = this._state(bay.runtime);
       const empty = isUnavailable(nameState) && isUnavailable(remainingState);
       const name = empty ? "Empty" : nameState?.state || "Fragrance";
-      const pct = Math.max(0, Math.min(100, Number(remainingState?.state) || 0));
+      // A missing, unknown or unavailable remaining sensor means "unknown", not 0%.
+      const remaining = isUnavailable(remainingState) ? NaN : Number(remainingState.state);
+      const known = !empty && Number.isFinite(remaining);
+      const pct = known ? Math.max(0, Math.min(100, remaining)) : 0;
       const active = activeOption === `slot_${bay.slot}`;
-      const low = !empty && pct <= (this._config.low_threshold ?? 15);
+      const low = known && pct <= (this._config.low_threshold ?? 15);
       const hue = fragranceHue(name);
       const disabled = empty || (locked && !!this._entities.fragrance);
       const picture = empty ? undefined : nameState?.attributes?.entity_picture;
@@ -503,19 +515,25 @@ class PuraCard extends HTMLElement {
       return `
         <button class="bay ${active ? "active" : ""} ${empty ? "empty" : ""} ${picture ? "has-img" : ""}"
           style="--hue:${hue}${tint}" data-action="bay" data-value="${bay.slot}" ${disabled ? "disabled" : ""}
-          title="${active ? "Stop" : `Diffuse ${esc(name)}`}">
+          title="${empty
+            ? "No fragrance installed"
+            : !this._entities.fragrance
+              ? "Show details"
+              : active
+                ? "Stop"
+                : `Diffuse ${esc(name)}`}">
           <div class="vial">
             ${active ? `<span class="mist m1"></span><span class="mist m2"></span><span class="mist m3"></span>` : ""}
-            <div class="glass"><div class="fill" style="height:${empty ? 0 : pct}%"></div></div>
+            <div class="glass">${known ? `<div class="fill" style="height:${pct}%"></div>` : ""}</div>
             ${picture ? `<div class="vial-frame"><img class="vial-img" src="${esc(picture)}" alt="" loading="lazy"></div>` : ""}
           </div>
           <div class="bay-info">
             <div class="slot-label">${slots.length > 1 ? `Slot ${bay.slot}` : "Fragrance"}${active ? ` · <span class="live">Active</span>` : ""}</div>
             <div class="bay-name">${esc(name)}</div>
-            ${picture ? `<div class="meter"><div style="width:${pct}%"></div></div>` : ""}
+            ${picture && known ? `<div class="meter"><div style="width:${pct}%"></div></div>` : ""}
             ${empty ? "" : `
               <div class="bay-meta">
-                <span class="${low ? "low" : ""}">${Math.round(pct)}% left</span>
+                ${known ? `<span class="${low ? "low" : ""}">${Math.round(pct)}% left</span>` : ""}
                 ${runtimeState && !isUnavailable(runtimeState) ? `<span>${esc(this._formatState(runtimeState))} used</span>` : ""}
               </div>`}
           </div>
@@ -560,6 +578,8 @@ class PuraCard extends HTMLElement {
     const durations = (this._config.timer_durations || DEFAULT_TIMER_DURATIONS)
       .map(Number)
       .filter((m) => m > 0);
+    // pura.start_timer fails when no fragrance is installed, so don't offer it.
+    const disabled = locked || !this._bestSlotOption();
     return `
       <div class="section">
         <div class="section-head"><span>Timer</span></div>
@@ -567,7 +587,7 @@ class PuraCard extends HTMLElement {
           ${durations
             .map(
               (m) =>
-                `<button class="pill" data-action="timer" data-value="${m}" ${locked ? "disabled" : ""}>
+                `<button class="pill" data-action="timer" data-value="${m}" ${disabled ? "disabled" : ""}>
                   <ha-icon icon="mdi:timer-outline"></ha-icon>${formatDuration(m)}</button>`
             )
             .join("")}
@@ -587,7 +607,7 @@ class PuraCard extends HTMLElement {
       const swatch = rgb ? `rgb(${rgb.join(",")})` : "var(--state-light-active-color, #ffc107)";
       toggles.push(`
         <span class="toggle-group">
-          <button class="toggle ${on ? "on" : ""}" style="--swatch:${swatch}" data-action="toggle"
+          <button class="toggle ${on ? "on" : ""}" style="--swatch:${esc(swatch)}" data-action="toggle"
             data-value="${esc(e.nightlight)}" ${isUnavailable(s) ? "disabled" : ""}>
             <ha-icon icon="${on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline"}"></ha-icon>Nightlight
           </button>
@@ -628,7 +648,7 @@ const STYLES = `
   .header { display: flex; align-items: center; gap: 12px; }
   .badge {
     width: 42px; height: 42px; border-radius: 50%; flex: none; cursor: pointer;
-    display: grid; place-items: center;
+    border: none; padding: 0; display: grid; place-items: center;
     background: color-mix(in srgb, var(--pura-accent) 14%, transparent); color: var(--pura-accent);
   }
   .badge ha-icon { --mdc-icon-size: 22px; }
