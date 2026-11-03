@@ -7,7 +7,9 @@ from unittest.mock import MagicMock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pura.const import DOMAIN
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 
 async def test_card_registered(
@@ -21,4 +23,8 @@ async def test_card_registered(
     assert config.path.endswith("custom_components/pura/www/pura-card.js")
 
     mock_frontend.assert_called_once()
-    assert mock_frontend.call_args.args[1].startswith("/pura/pura-card.js?v=")
+    integration = await async_get_integration(hass, DOMAIN)
+    assert integration.version
+    assert (
+        mock_frontend.call_args.args[1] == f"/pura/pura-card.js?v={integration.version}"
+    )

@@ -314,6 +314,25 @@ async def test_fragrance_vial_picture(
         not in hass.states.get("sensor.home_mini_fragrance_remaining").attributes
     )
 
+    # A new fragrance's image and color replace the old ones on refresh
+    coordinator = config_entry.runtime_data.coordinator
+    fragrance = mini_only[HOME_MINI_ID]["bay1"]["fragrance"]
+    fragrance |= {"vialUrl": f"{VIAL_URL}?v=2", "placeholderColor": "#112233"}
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.home_mini_fragrance")
+    assert state.attributes["entity_picture"] == f"{VIAL_URL}?v=2"
+    assert state.attributes["color"] == "#112233"
+
+    # ...and are removed when Pura stops providing them
+    del fragrance["vialUrl"], fragrance["placeholderColor"]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.home_mini_fragrance")
+    assert state.state == "Volcano"
+    assert "entity_picture" not in state.attributes
+    assert "color" not in state.attributes
+
 
 async def test_bay_fragrance_vial_picture(
     hass: HomeAssistant,

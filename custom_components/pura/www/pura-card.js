@@ -86,8 +86,10 @@ const fragranceTint = (hex, darkMode) => {
 };
 
 const slotFromEntity = (entityId, stateObj) => {
+  // The slot marker comes after the device name in the entity ID, so use the last one
+  // (a device named e.g. "Slot 1 Room" would otherwise win).
   const match =
-    entityId.match(/slot_(\d)/) ||
+    [...entityId.matchAll(/slot_(\d)/g)].pop() ||
     String(stateObj?.attributes?.friendly_name || "").match(/slot\s*(\d)/i);
   return match ? Number(match[1]) : undefined;
 };
@@ -395,7 +397,8 @@ class PuraCard extends HTMLElement {
       ids.map((id) => {
         const s = this._hass.states[id];
         return s && [
-          s.state, s.attributes.rgb_color, s.attributes.options, s.attributes.friendly_name,
+          s.state, s.attributes.unit_of_measurement, s.attributes.rgb_color, s.attributes.options,
+          s.attributes.friendly_name,
           s.attributes.entity_picture, s.attributes.color,
         ];
       }),
@@ -466,6 +469,7 @@ class PuraCard extends HTMLElement {
     if (battery && !isUnavailable(battery))
       chips.push(`<span class="chip"><ha-icon icon="mdi:battery"></ha-icon>${esc(battery.state)}%</span>`);
 
+    const badgeEntity = e.fragrance || e.active_fragrance;
     const power = e.fragrance
       ? `<button class="power ${running ? "on" : ""}" data-action="power" ${locked ? "disabled" : ""}
            title="${running ? "Turn off" : "Turn on"}"><ha-icon icon="mdi:power"></ha-icon></button>`
@@ -474,8 +478,8 @@ class PuraCard extends HTMLElement {
     return `
       <ha-card class="${running ? "running" : ""} ${e.fan_intensity ? "car" : ""}">
         <div class="header">
-          <button class="badge" data-action="more-info" data-value="${esc(e.fragrance || e.active_fragrance || "")}"
-            title="Fragrance">
+          <button class="badge" data-action="more-info" data-value="${esc(badgeEntity || "")}"
+            ${badgeEntity ? `title="Fragrance"` : "disabled"}>
             <ha-icon icon="mdi:scent"></ha-icon>
           </button>
           <div class="titles">
@@ -585,7 +589,7 @@ class PuraCard extends HTMLElement {
 
     const durations = (this._config.timer_durations || DEFAULT_TIMER_DURATIONS)
       .map(Number)
-      .filter((m) => m > 0);
+      .filter((m) => Number.isFinite(m) && m > 0);
     // pura.start_timer fails when no fragrance is installed, so don't offer it.
     const disabled = locked || !this._bestSlotOption();
     return `
@@ -659,6 +663,7 @@ const STYLES = `
     border: none; padding: 0; display: grid; place-items: center;
     background: color-mix(in srgb, var(--pura-accent) 14%, transparent); color: var(--pura-accent);
   }
+  .badge[disabled] { opacity: 1; } /* nothing to open (e.g. Car), but it's still the card's icon */
   .badge ha-icon { --mdc-icon-size: 22px; }
   .running .badge { animation: breathe 3.2s ease-in-out infinite; }
   .titles { flex: 1; min-width: 0; }
