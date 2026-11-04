@@ -5,11 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from pypura import PuraApiException
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pura.const import DOMAIN
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.loader import async_get_integration
+
+from . import setup_integration
 
 
 async def test_card_registered(
@@ -28,4 +34,46 @@ async def test_card_registered(
     assert (
         mock_frontend.call_args.args[1]
         == f"/pura/pura-diffuser.js?v={integration.version}"
+    )
+
+
+async def test_account_without_devices_removes_all_devices(
+    hass: HomeAssistant, mock_pura: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test devices removed from the account are removed from Home Assistant."""
+    entry = await setup_integration(hass, [Platform.SENSOR])
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    assert dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+
+    caplog.clear()
+    mock_pura.get_devices.return_value = {}
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert entry.runtime_data.coordinator.last_update_success
+    assert not dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert not er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    assert "Traceback" not in caplog.text
+
+
+async def test_failed_update_keeps_devices(
+    hass: HomeAssistant, mock_pura: MagicMock
+) -> None:
+    """Test a failed update isn't taken to mean the devices were removed."""
+    entry = await setup_integration(hass, [Platform.SENSOR])
+    device_registry = dr.async_get(hass)
+    device_count = len(
+        dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    )
+    assert device_count
+
+    mock_pura.get_devices.side_effect = PuraApiException("Invalid response")
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert not entry.runtime_data.coordinator.last_update_success
+    assert (
+        len(dr.async_entries_for_config_entry(device_registry, entry.entry_id))
+        == device_count
     )
