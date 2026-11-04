@@ -301,29 +301,10 @@ class PuraDiffuserCard extends HTMLElement {
     }
   }
 
-  /**
-   * The slot that is actually diffusing, as "slot_N", or undefined when idle.
-   *
-   * The integration's Fragrance select reports the slot a timer was *started*
-   * with, so it goes stale when auto-alternate switches slots mid-timer. The
-   * Active fragrance sensor follows the live slot, so match its name to a slot
-   * and only fall back to the select when the name is missing or ambiguous.
-   */
+  /** The slot that is diffusing, as "slot_N", or undefined when idle. */
   _activeOption() {
-    const e = this._entities;
-    const selected = this._state(e.fragrance)?.state;
-    const selectedSlot = selected && selected.startsWith("slot_") ? selected : undefined;
-    const activeName = this._state(e.active_fragrance)?.state;
-    if (!e.active_fragrance || !activeName || isUnavailable(this._state(e.active_fragrance)))
-      return selectedSlot;
-    if (activeName === "none") return undefined;
-
-    const matches = Object.values(e.bays)
-      .filter((bay) => this._state(bay.name)?.state === activeName)
-      .map((bay) => `slot_${bay.slot}`);
-    if (matches.length === 1) return matches[0];
-    if (matches.includes(selectedSlot)) return selectedSlot;
-    return matches[0] || selectedSlot;
+    const selected = this._state(this._entities.fragrance)?.state;
+    return selected?.startsWith("slot_") ? selected : undefined;
   }
 
   /** The Fragrance select's options for installed slots, without "off". */
@@ -450,10 +431,11 @@ class PuraDiffuserCard extends HTMLElement {
     const offline = this._state(e.connected)?.state === "off";
     const locked = away || offline || isUnavailable(fragranceState);
 
-    // Mini/Car have no Active fragrance sensor, so fall back to the active slot's fragrance.
+    // Mini/Car have no Active fragrance sensor, and it reads "none" between alternations,
+    // so fall back to the active slot's fragrance.
     const activeFragranceState = this._state(e.active_fragrance);
     const activeBayState = running ? this._state(e.bays[activeOption.replace("slot_", "")]?.name) : undefined;
-    const activeName = !isUnavailable(activeFragranceState)
+    const activeName = !isUnavailable(activeFragranceState) && activeFragranceState.state !== "none"
       ? activeFragranceState.state
       : !isUnavailable(activeBayState)
         ? activeBayState.state
@@ -484,8 +466,10 @@ class PuraDiffuserCard extends HTMLElement {
       );
 
     const badgeEntity = e.fragrance || e.active_fragrance;
+    // Turning on needs an installed slot, but a running diffuser can always be turned off.
+    const powerDisabled = locked || (!running && !this._slotOptions().length);
     const power = e.fragrance
-      ? `<button class="power ${running ? "on" : ""}" data-action="power" ${locked ? "disabled" : ""}
+      ? `<button class="power ${running ? "on" : ""}" data-action="power" ${powerDisabled ? "disabled" : ""}
            title="${running ? "Turn off" : "Turn on"}"><ha-icon icon="mdi:power"></ha-icon></button>`
       : "";
 

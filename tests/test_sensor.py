@@ -374,3 +374,10 @@ async def test_bay_fragrance_vial_picture(
     assert slot_2.state == "White Tea"
     assert "entity_picture" not in slot_2.attributes
     assert "color" not in slot_2.attributes
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "none"
+
+    # The active fragrance follows the bay that is diffusing
+    home["bay2"]["activeAt"] = 1700000000
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "White Tea"

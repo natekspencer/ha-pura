@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pypura.utils import dig, get_device_name, get_model_name
 
 from homeassistant.helpers.device_registry import (
@@ -16,6 +18,11 @@ from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 
 UPDATE_INTERVAL = 30
+
+
+def get_active_bay(device: dict[str, Any]) -> int | None:
+    """Get the bay that is currently diffusing, if any."""
+    return next((i for i in (1, 2) if dig(device, f"bay{i}.activeAt")), None)
 
 
 class PuraEntity(
@@ -79,10 +86,6 @@ class PuraEntity(
             for schedule in device.get("schedules") or []:
                 if schedule.get("id") == controller:
                     return schedule | {"controller": controller}
-        bay = 0
-        if (data := device["bay1"]) and data["activeAt"]:
-            bay = 1
-        elif (data := device.get("bay2")) and data["activeAt"]:
-            bay = 2
+        bay = get_active_bay(device) or 0
         intensity = device["deviceDefaults"][f"bay{bay}Intensity"] if bay else None
         return {"bay": bay, "controller": str(controller), "intensity": intensity}

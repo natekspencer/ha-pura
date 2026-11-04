@@ -33,7 +33,7 @@ from homeassistant.util.dt import UTC, utc_from_timestamp
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .entity import PuraEntity
+from .entity import PuraEntity, get_active_bay
 
 HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 
@@ -116,13 +116,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="active_fragrance",
             translation_key="active_fragrance",
             value_fn=lambda data: (
-                get_fragrance_name(data, 1)
-                if (bay := data["bay1"]) and bay["activeAt"]
-                else (
-                    get_fragrance_name(data, 2)
-                    if (bay := data["bay2"]) and bay["activeAt"]
-                    else "none"
-                )
+                get_fragrance_name(data, bay)
+                if (bay := get_active_bay(data))
+                else "none"
             ),
         ),
         PuraSensorEntityDescription(
