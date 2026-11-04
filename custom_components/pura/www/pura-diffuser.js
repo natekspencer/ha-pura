@@ -37,6 +37,16 @@ const CARD_VERSION = "0.2.0";
 const INTENSITY_LEVELS = ["gentle", "subtle", "medium", "strong", "intense"];
 // Mirrors INTENSITY_LEVELS in pypura; used for pura.start_timer.
 const INTENSITY_VALUE = { gentle: 1, subtle: 3, medium: 5, strong: 7, intense: 10 };
+// Dashed vial outline for an empty slot. The viewBox applies the same crop and zoom
+// as the vial photos so the bottles line up, and the two halves mirror each other
+// from the top centre so the dashes are symmetrical.
+const VIAL_HALF =
+  "M201 0H245Q259 0 259 14V252H322V340L344 378 322 396V444H389Q402 444 402 457V1000Q402 1014 389 1014H201";
+const VIAL_OUTLINE = `<svg class="vial-outline" viewBox="-60.5 -111.5 518 1130" aria-hidden="true">
+  <path class="vial-fill" d="${VIAL_HALF}H13Q0 1014 0 1000V457Q0 444 13 444H80V396L58 378 80 340V252H143V14Q143 0 157 0Z"/>
+  <path class="vial-edge" vector-effect="non-scaling-stroke" d="${VIAL_HALF}"/>
+  <path class="vial-edge" vector-effect="non-scaling-stroke" transform="matrix(-1 0 0 1 402 0)" d="${VIAL_HALF}"/>
+</svg>`;
 const CONTROLLER_LABEL = {
   default: "Manual",
   schedule: "Schedule",
@@ -523,12 +533,14 @@ class PuraDiffuserCard extends HTMLElement {
       const hue = fragranceHue(name);
       const disabled = empty || (locked && !!this._entities.fragrance);
       const picture = empty ? undefined : nameState?.attributes?.entity_picture;
+      // Car pods are round, so the vial outline doesn't suit them.
+      const outline = empty && !this._entities.fan_intensity;
       // Pura's own color for the fragrance, falling back to a hue derived from its name.
       const color = empty ? undefined : fragranceTint(nameState?.attributes?.color, this._hass.themes?.darkMode);
       const tint = color ? `;--tint:${color}` : "";
 
       return `
-        <button class="bay ${active ? "active" : ""} ${empty ? "empty" : ""} ${picture ? "has-img" : ""}"
+        <button class="bay ${active ? "active" : ""} ${empty ? "empty" : ""} ${picture || outline ? "has-img" : ""}"
           style="--hue:${hue}${tint}" data-action="bay" data-value="${bay.slot}" ${disabled ? "disabled" : ""}
           title="${empty
             ? "No fragrance installed"
@@ -541,6 +553,7 @@ class PuraDiffuserCard extends HTMLElement {
             ${active ? `<span class="mist m1"></span><span class="mist m2"></span><span class="mist m3"></span>` : ""}
             <div class="glass">${known ? `<div class="fill" style="height:${pct}%"></div>` : ""}</div>
             ${picture ? `<div class="vial-frame"><img class="vial-img" src="${esc(picture)}" alt="" loading="lazy"></div>` : ""}
+            ${outline ? VIAL_OUTLINE : ""}
           </div>
           <div class="bay-info">
             <div class="slot-label">${slots.length > 1 ? `Slot ${bay.slot}` : "Fragrance"}${active ? ` · <span class="live">Active</span>` : ""}</div>
@@ -733,6 +746,12 @@ const STYLES = `
   .bay.has-img .mist { z-index: 1; }
   /* Product photos are padded, so fill (and crop) the frame and zoom in a little */
   .bay.has-img .vial-frame { display: block; position: absolute; inset: 0; overflow: hidden; border-radius: 8px; }
+  .vial-outline { display: block; width: 100%; height: 100%; overflow: visible; }
+  .vial-fill { fill: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); }
+  .vial-edge {
+    fill: none; stroke: var(--secondary-text-color);
+    stroke-width: 1.5; stroke-dasharray: 4 3; stroke-dashoffset: 2;
+  }
   .vial-img {
     display: block; width: 100%; height: 100%; object-fit: cover;
     transform: scale(1.1); transform-origin: center;
