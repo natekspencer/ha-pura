@@ -95,6 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
         raise ConfigEntryNotReady(ex) from ex
 
     coordinator = PuraDataUpdateCoordinator(hass, client=client, config_entry=entry)
+    entry.async_on_unload(coordinator.subscriber.stop)
     await coordinator.async_config_entry_first_refresh()
 
     firmware_coordinator = PuraFirmwareDataUpdateCoordinator(

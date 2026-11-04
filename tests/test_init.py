@@ -77,3 +77,14 @@ async def test_failed_update_keeps_devices(
         len(dr.async_entries_for_config_entry(device_registry, entry.entry_id))
         == device_count
     )
+
+
+async def test_unload_stops_subscriber(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Test unloading the integration stops the websocket subscriber."""
+    subscriber = init_integration.runtime_data.coordinator.subscriber
+
+    assert await hass.config_entries.async_unload(init_integration.entry_id)
+
+    subscriber.stop.assert_awaited_once_with()
