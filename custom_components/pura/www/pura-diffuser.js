@@ -248,6 +248,11 @@ class PuraDiffuserCard extends HTMLElement {
 
   // ---------------------------------------------------------------- helpers
 
+  // From the device's model, as any of its entities can be disabled.
+  get _isCar() {
+    return this._hass.devices?.[this._config.device_id]?.model?.startsWith("Car") ?? false;
+  }
+
   _state(entityId) {
     return entityId ? this._hass.states[entityId] : undefined;
   }
@@ -501,7 +506,7 @@ class PuraDiffuserCard extends HTMLElement {
       : "";
 
     return `
-      <ha-card class="${running ? "running" : ""} ${e.fan_intensity ? "car" : ""}">
+      <ha-card class="${running ? "running" : ""} ${this._isCar ? "car" : ""}">
         <div class="header">
           <button class="badge" data-action="more-info" data-value="${esc(badgeEntity || "")}"
             ${badgeEntity ? `title="Fragrance"` : "disabled"}>
@@ -568,7 +573,7 @@ class PuraDiffuserCard extends HTMLElement {
             ${active ? `<span class="mist m1"></span><span class="mist m2"></span><span class="mist m3"></span>` : ""}
             <div class="glass">${known ? `<div class="fill" style="height:${pct}%"></div>` : ""}</div>
             ${picture ? `<div class="vial-frame"><img class="vial-img" src="${esc(picture)}" alt="" loading="lazy"></div>` : ""}
-            ${empty ? (this._entities.fan_intensity ? POD_OUTLINE : VIAL_OUTLINE) : ""}
+            ${empty ? (this._isCar ? POD_OUTLINE : VIAL_OUTLINE) : ""}
           </div>
           <div class="bay-info">
             <div class="slot-label">${slots.length > 1 ? `Slot ${bay.slot}` : "Fragrance"}${active ? ` · <span class="live">Active</span>` : ""}</div>
@@ -783,7 +788,10 @@ const STYLES = `
   }
   .m2 { animation-delay: 0.8s; } .m3 { animation-delay: 1.6s; }
   .bay-info { min-width: 0; flex: 1; }
-  .slot-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color); }
+  .slot-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color);
+    overflow: hidden; text-overflow: ellipsis;
+  }
   .live { color: var(--tint); font-weight: 600; }
   .bay-name { font-size: 15px; font-weight: 500; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .bay-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--secondary-text-color); }
