@@ -21,22 +21,8 @@ UPDATE_INTERVAL = 30
 
 
 def get_active_bay(device: dict[str, Any]) -> int | None:
-    """Get the bay that is currently diffusing, if any.
-
-    Websocket updates are merged into the device, so a bay may keep an old
-    `activeAt` until the next poll. The most recent one is the live bay, unless
-    it was activated before a running timer started, which makes it out of date.
-    """
-    active_at = {i: at for i in (1, 2) if (at := dig(device, f"bay{i}.activeAt"))}
-    if not active_at:
-        return None
-    bay = max(active_at, key=active_at.__getitem__)
-    timer = device.get("timer") or {}
-    if device.get("controller") == "timer" and active_at[bay] < (
-        timer.get("start") or 0
-    ):
-        return timer.get("bay") or bay
-    return bay
+    """Get the bay that is currently diffusing, if any."""
+    return next((i for i in (1, 2) if dig(device, f"bay{i}.activeAt")), None)
 
 
 class PuraEntity(
@@ -95,7 +81,13 @@ class PuraEntity(
         """Get the intensity data."""
         device = self.get_device()
         if (controller := device["controller"]) == "timer" and device[controller]:
-            return device[controller] | {"controller": controller}
+            data = device[controller] | {"controller": controller}
+            # A timer keeps the intensity it started with, but the bay's own follows
+            # any changes, and differs per bay when auto-alternate switches bays.
+            if bay := get_active_bay(device):
+                intensity = dig(device, f"deviceDefaults.bay{bay}Intensity")
+                data["intensity"] = intensity or data["intensity"]
+            return data
         elif controller != "default":
             for schedule in device.get("schedules") or []:
                 if schedule.get("id") == controller:

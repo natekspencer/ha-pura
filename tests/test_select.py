@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from custom_components.pura.entity import get_active_bay
 from homeassistant.components.select import (
     ATTR_OPTION,
@@ -43,46 +41,17 @@ def _home_on_timer(
     return home
 
 
-@pytest.mark.parametrize(
-    ("bay1", "bay2", "expected"),
-    [
-        (0, 0, None),
-        (ACTIVE_AT, 0, 1),
-        (0, ACTIVE_AT, 2),
-        (ACTIVE_AT, ACTIVE_AT + 60, 2),  # bay 1 retained after a partial update
-        (ACTIVE_AT + 60, ACTIVE_AT, 1),
-    ],
-)
-def test_get_active_bay(bay1: int, bay2: int, expected: int | None) -> None:
-    """Test the most recently activated bay is the active one."""
-    device = {"bay1": {"activeAt": bay1}, "bay2": {"activeAt": bay2}}
-    assert get_active_bay(device) == expected
-
-
-def test_get_active_bay_timer() -> None:
-    """Test a bay activated before a running timer started is out of date."""
-    device = {
-        "controller": "timer",
-        "timer": {"bay": 1, "start": ACTIVE_AT},
-        "bay1": {"activeAt": ACTIVE_AT - 120},
-        "bay2": {"activeAt": ACTIVE_AT - 60},
-    }
-    assert get_active_bay(device) == 1
-
-    # Auto-alternate switched bays after the timer started
-    device["bay2"]["activeAt"] = ACTIVE_AT + 60
-    assert get_active_bay(device) == 2
-
-    # The timer only counts while it is in control
-    device |= {"controller": "default"}
-    device["bay2"]["activeAt"] = ACTIVE_AT - 60
-    assert get_active_bay(device) == 2
-
-
-def test_get_active_bay_single_slot() -> None:
-    """Test devices without a second bay or with an empty bay."""
+def test_get_active_bay() -> None:
+    """Test the active bay comes from the bay's activation timestamp."""
+    assert (
+        get_active_bay({"bay1": {"activeAt": ACTIVE_AT}, "bay2": {"activeAt": 0}}) == 1
+    )
+    assert (
+        get_active_bay({"bay1": {"activeAt": 0}, "bay2": {"activeAt": ACTIVE_AT}}) == 2
+    )
     assert get_active_bay({"bay1": {"activeAt": ACTIVE_AT}, "bay2": None}) == 1
     assert get_active_bay({"bay1": {"activeAt": ACTIVE_AT}}) == 1
+    assert get_active_bay({"bay1": {"activeAt": 0}, "bay2": {"activeAt": 0}}) is None
     assert get_active_bay({"bay1": None, "bay2": None}) is None
 
 
@@ -109,16 +78,6 @@ async def test_fragrance_follows_active_bay(
     assert hass.states.get(ENTITY_ID).state == "off"
 
 
-async def test_fragrance_uses_most_recent_bay(
-    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
-) -> None:
-    """Test the select shows the newer bay when both have an active timestamp."""
-    _home_on_timer(devices, ACTIVE_AT, ACTIVE_AT + 60)
-
-    await setup_integration(hass, [Platform.SELECT])
-    assert hass.states.get(ENTITY_ID).state == "slot_2"
-
-
 async def test_intensity_targets_active_bay(
     hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
 ) -> None:
@@ -138,44 +97,11 @@ async def test_intensity_targets_active_bay(
     )
 
 
-@pytest.mark.parametrize(
-    ("bay2_active_at", "expected_bay"),
-    [
-        (ACTIVE_AT - 60, 1),  # retained from before the timer started
-        (ACTIVE_AT + 60, 2),  # auto-alternate switched bays after the timer started
-    ],
-)
-async def test_timer_start_resolves_bay(
-    hass: HomeAssistant,
-    mock_pura: MagicMock,
-    devices: dict[str, dict[str, Any]],
-    bay2_active_at: int,
-    expected_bay: int,
-) -> None:
-    """Test a bay activated before the timer started doesn't override the timer."""
-    home = _home_on_timer(devices, 0, bay2_active_at)
-    home["timer"]["start"] = ACTIVE_AT
-
-    await setup_integration(hass, [Platform.SELECT])
-    assert hass.states.get(ENTITY_ID).state == f"slot_{expected_bay}"
-
-    await hass.services.async_call(
-        SELECT_DOMAIN,
-        SERVICE_SELECT_OPTION,
-        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "strong"},
-        blocking=True,
-    )
-    mock_pura.set_intensity.assert_called_once_with(
-        HOME_V5_ID, bay=expected_bay, controller="timer", intensity=10
-    )
-
-
 async def test_active_fragrance_matches_select(
     hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
 ) -> None:
-    """Test the active fragrance and select agree when a timer has just started."""
-    home = _home_on_timer(devices, ACTIVE_AT - 120, ACTIVE_AT - 60)
-    home["timer"]["start"] = ACTIVE_AT
+    """Test the active fragrance and select both follow the diffusing bay."""
+    home = _home_on_timer(devices, ACTIVE_AT, 0)
     home["bay1"] |= {"id": ACTIVE_AT, "wearingTime": 3600, "remaining": {"percent": 90}}
     home["bay2"] |= {
         "id": ACTIVE_AT,
@@ -187,3 +113,34 @@ async def test_active_fragrance_matches_select(
     await setup_integration(hass, [Platform.SELECT, Platform.SENSOR])
     assert hass.states.get(ENTITY_ID).state == "slot_1"
     assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
+
+
+async def test_intensity_shows_bay_value(
+    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
+) -> None:
+    """Test the select shows the bay's intensity, as a timer's never updates."""
+    home = _home_on_timer(devices, ACTIVE_AT, 0)
+    home["deviceDefaults"] |= {"bay1Intensity": 10, "bay2Intensity": 1}
+
+    # Correct from the first load, despite the timer's intensity of 5
+    entry = await setup_integration(hass, [Platform.SELECT])
+    coordinator = entry.runtime_data.coordinator
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+
+    # Changes to the bay's intensity are picked up
+    home["deviceDefaults"]["bay1Intensity"] = 7
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+
+    # Each bay has its own intensity when auto-alternate switches bays
+    home["bay1"]["activeAt"], home["bay2"]["activeAt"] = 0, ACTIVE_AT
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "subtle"
+
+    # With no bay active, the timer's intensity is the only one to show
+    home["bay2"]["activeAt"] = 0
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "medium"
