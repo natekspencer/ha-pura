@@ -37,6 +37,33 @@ const CARD_VERSION = "0.2.0";
 const INTENSITY_LEVELS = ["gentle", "subtle", "medium", "strong", "intense"];
 // Mirrors INTENSITY_LEVELS in pypura; used for pura.start_timer.
 const INTENSITY_VALUE = { gentle: 1, subtle: 3, medium: 5, strong: 7, intense: 10 };
+// Dashed outlines for an empty slot. Each viewBox applies the same crop and zoom as
+// the photos so the shapes line up, and each edge is drawn as two halves mirrored
+// from the top centre so the dashes are symmetrical.
+const slotOutline = (viewBox, centre, half, fill) => {
+  const edge = (mirror) =>
+    `<path class="vial-edge" vector-effect="non-scaling-stroke" ${mirror} d="${half}"/>`;
+  return `<svg class="vial-outline" viewBox="${viewBox}" aria-hidden="true">
+    <path class="vial-fill" d="${fill}"/>
+    ${edge("")}
+    ${edge(`transform="matrix(-1 0 0 1 ${centre * 2} 0)"`)}
+  </svg>`;
+};
+const VIAL_HALF =
+  "M201 0H245Q259 0 259 14V252H322V340L344 378 322 396V444H389Q402 444 402 457V1000Q402 1014 389 1014H201";
+const VIAL_OUTLINE = slotOutline(
+  "-60.5 -111.5 518 1130",
+  201,
+  VIAL_HALF,
+  `${VIAL_HALF}H13Q0 1014 0 1000V457Q0 444 13 444H80V396L58 378 80 340V252H143V14Q143 0 157 0Z`
+);
+const POD_HALF = "M358 2A320 320 0 0 1 678 324H714A356 356 0 0 1 358 681";
+const POD_OUTLINE = slotOutline(
+  "-1 -18.5 720 720",
+  358,
+  `${POD_HALF}M358 125A213 213 0 0 1 358 551`,
+  `${POD_HALF}A356 356 0 0 1 2 324H38A320 320 0 0 1 358 2Z`
+);
 const CONTROLLER_LABEL = {
   default: "Manual",
   schedule: "Schedule",
@@ -220,6 +247,11 @@ class PuraDiffuserCard extends HTMLElement {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  // From the device's model, as any of its entities can be disabled.
+  get _isCar() {
+    return this._hass.devices?.[this._config.device_id]?.model?.startsWith("Car") ?? false;
+  }
 
   _state(entityId) {
     return entityId ? this._hass.states[entityId] : undefined;
@@ -474,7 +506,7 @@ class PuraDiffuserCard extends HTMLElement {
       : "";
 
     return `
-      <ha-card class="${running ? "running" : ""} ${e.fan_intensity ? "car" : ""}">
+      <ha-card class="${running ? "running" : ""} ${this._isCar ? "car" : ""}">
         <div class="header">
           <button class="badge" data-action="more-info" data-value="${esc(badgeEntity || "")}"
             ${badgeEntity ? `title="Fragrance"` : "disabled"}>
@@ -528,7 +560,7 @@ class PuraDiffuserCard extends HTMLElement {
       const tint = color ? `;--tint:${color}` : "";
 
       return `
-        <button class="bay ${active ? "active" : ""} ${empty ? "empty" : ""} ${picture ? "has-img" : ""}"
+        <button class="bay ${active ? "active" : ""} ${empty ? "empty" : ""} ${picture || empty ? "has-img" : ""}"
           style="--hue:${hue}${tint}" data-action="bay" data-value="${bay.slot}" ${disabled ? "disabled" : ""}
           title="${empty
             ? "No fragrance installed"
@@ -541,6 +573,7 @@ class PuraDiffuserCard extends HTMLElement {
             ${active ? `<span class="mist m1"></span><span class="mist m2"></span><span class="mist m3"></span>` : ""}
             <div class="glass">${known ? `<div class="fill" style="height:${pct}%"></div>` : ""}</div>
             ${picture ? `<div class="vial-frame"><img class="vial-img" src="${esc(picture)}" alt="" loading="lazy"></div>` : ""}
+            ${empty ? (this._isCar ? POD_OUTLINE : VIAL_OUTLINE) : ""}
           </div>
           <div class="bay-info">
             <div class="slot-label">${slots.length > 1 ? `Slot ${bay.slot}` : "Fragrance"}${active ? ` · <span class="live">Active</span>` : ""}</div>
@@ -733,6 +766,12 @@ const STYLES = `
   .bay.has-img .mist { z-index: 1; }
   /* Product photos are padded, so fill (and crop) the frame and zoom in a little */
   .bay.has-img .vial-frame { display: block; position: absolute; inset: 0; overflow: hidden; border-radius: 8px; }
+  .vial-outline { display: block; width: 100%; height: 100%; overflow: visible; }
+  .vial-fill { fill: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); }
+  .vial-edge {
+    fill: none; stroke: var(--secondary-text-color);
+    stroke-width: 1.5; stroke-dasharray: 4 3; stroke-dashoffset: 2;
+  }
   .vial-img {
     display: block; width: 100%; height: 100%; object-fit: cover;
     transform: scale(1.1); transform-origin: center;
@@ -749,7 +788,10 @@ const STYLES = `
   }
   .m2 { animation-delay: 0.8s; } .m3 { animation-delay: 1.6s; }
   .bay-info { min-width: 0; flex: 1; }
-  .slot-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color); }
+  .slot-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color);
+    overflow: hidden; text-overflow: ellipsis;
+  }
   .live { color: var(--tint); font-weight: 600; }
   .bay-name { font-size: 15px; font-weight: 500; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .bay-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--secondary-text-color); }
