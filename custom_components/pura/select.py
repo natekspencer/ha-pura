@@ -64,15 +64,8 @@ SELECT_DESCRIPTIONS = {
         PuraSelectEntityDescription(
             key="fragrance",
             translation_key="fragrance",
-            # A timer or schedule keeps the bay it started with, which goes stale
-            # when auto-alternate switches bays, so prefer the bay that is diffusing.
             current_fn=lambda select: (
-                f"slot_{bay}"
-                if (
-                    bay := get_active_bay(select.get_device())
-                    or select._intensity_data["bay"]
-                )
-                else "off"
+                f"slot_{bay}" if (bay := select._current_bay) else "off"
             ),
             options_fn=lambda data: (
                 ["off"] + [f"slot_{i}" for i in (1, 2) if has_fragrance(data, i)]
@@ -94,7 +87,7 @@ SELECT_DESCRIPTIONS = {
             select_fn=lambda select, option: functools.partial(
                 select.coordinator.api.set_intensity,
                 select._device_id,
-                bay=select._intensity_data["bay"],
+                bay=select._current_bay,
                 controller=select._intensity_data["controller"],
                 intensity=INTENSITY_MAP[option],
             ),
@@ -107,6 +100,15 @@ class PuraSelectEntity(PuraEntity, SelectEntity):
     """Pura select."""
 
     entity_description: PuraSelectEntityDescription
+
+    @property
+    def _current_bay(self) -> int:
+        """Return the current bay, or 0 if there is none.
+
+        A timer or schedule keeps the bay it started with, which goes stale when
+        auto-alternate switches bays, so prefer the bay that is diffusing.
+        """
+        return get_active_bay(self.get_device()) or self._intensity_data["bay"]
 
     @property
     def current_option(self) -> str:
