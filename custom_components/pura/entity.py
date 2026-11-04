@@ -80,18 +80,20 @@ class PuraEntity(
     def _intensity_data(self) -> dict:
         """Get the intensity data."""
         device = self.get_device()
-        if (controller := device["controller"]) == "timer" and device[controller]:
+        controller = device["controller"]
+        bay = get_active_bay(device) or 0
+        intensity = dig(device, f"deviceDefaults.bay{bay}Intensity") if bay else None
+        data = {"bay": bay, "controller": str(controller), "intensity": intensity}
+        if controller == "timer" and device[controller]:
             data = device[controller] | {"controller": controller}
-            # A timer keeps the intensity it started with, but the bay's own follows
-            # any changes, and differs per bay when auto-alternate switches bays.
-            if bay := get_active_bay(device):
-                intensity = dig(device, f"deviceDefaults.bay{bay}Intensity")
-                data["intensity"] = intensity or data["intensity"]
-            return data
         elif controller != "default":
             for schedule in device.get("schedules") or []:
                 if schedule.get("id") == controller:
-                    return schedule | {"controller": controller}
-        bay = get_active_bay(device) or 0
-        intensity = device["deviceDefaults"][f"bay{bay}Intensity"] if bay else None
-        return {"bay": bay, "controller": str(controller), "intensity": intensity}
+                    data = schedule | {"controller": controller}
+                    break
+        # With auto-alternate on, each bay keeps its own intensity whatever is running,
+        # and the Pura app changes that rather than the timer or saved schedule.
+        if device.get("diffusionMode") == "oscillation-multi-bay":
+            data["controller"] = "default"
+            data["intensity"] = intensity or data["intensity"]
+        return data

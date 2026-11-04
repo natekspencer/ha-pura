@@ -20,15 +20,17 @@ from .conftest import HOME_V5_ID
 ENTITY_ID = "select.home_v5_fragrance"
 INTENSITY_ENTITY_ID = "select.home_v5_intensity"
 ACTIVE_AT = 1700000000
+SCHEDULE_ID = "a1ebf574-ddcc-4261-9098-619ab8022037"
 
 
 def _home_on_timer(
     devices: dict[str, dict[str, Any]], bay1_active_at: int, bay2_active_at: int
 ) -> dict[str, Any]:
-    """Limit the account to a Home v5 running a timer started on bay 1."""
+    """Limit the account to an auto-alternating Home v5 on a timer started on bay 1."""
     home = devices[HOME_V5_ID]
     home |= {
         "controller": "timer",
+        "diffusionMode": "oscillation-multi-bay",
         "schedules": [],
         "timer": {"bay": 1, "intensity": 5},
         "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
@@ -38,6 +40,19 @@ def _home_on_timer(
     for device_id in list(devices):
         if device_id != HOME_V5_ID:
             del devices[device_id]
+    return home
+
+
+def _home_on_schedule(
+    devices: dict[str, dict[str, Any]], bay1_active_at: int, bay2_active_at: int
+) -> dict[str, Any]:
+    """Limit the account to an auto-alternating Home v5 on a schedule for bay 1."""
+    home = _home_on_timer(devices, bay1_active_at, bay2_active_at)
+    home |= {
+        "controller": SCHEDULE_ID,
+        "schedules": [{"id": SCHEDULE_ID, "bay": 1, "intensity": 7}],
+        "timer": None,
+    }
     return home
 
 
@@ -93,7 +108,7 @@ async def test_intensity_targets_active_bay(
     )
 
     mock_pura.set_intensity.assert_called_once_with(
-        HOME_V5_ID, bay=2, controller="timer", intensity=10
+        HOME_V5_ID, bay=2, controller="default", intensity=10
     )
 
 
@@ -144,3 +159,82 @@ async def test_intensity_shows_bay_value(
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(INTENSITY_ENTITY_ID).state == "medium"
+
+
+async def test_intensity_auto_alternate_schedule(
+    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
+) -> None:
+    """Test a schedule uses each bay's intensity when auto-alternating."""
+    home = _home_on_schedule(devices, ACTIVE_AT, 0)
+    home["deviceDefaults"] |= {"bay1Intensity": 10, "bay2Intensity": 1}
+
+    entry = await setup_integration(hass, [Platform.SELECT])
+    coordinator = entry.runtime_data.coordinator
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+
+    # Changes go to the bay, leaving the saved schedule alone
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "medium"},
+        blocking=True,
+    )
+    mock_pura.set_intensity.assert_called_once_with(
+        HOME_V5_ID, bay=1, controller="default", intensity=5
+    )
+
+    home["bay1"]["activeAt"], home["bay2"]["activeAt"] = 0, ACTIVE_AT
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "subtle"
+
+    # With no bay active, the schedule's intensity is the only one to show
+    home["bay2"]["activeAt"] = 0
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+    assert hass.states.get(ENTITY_ID).state == "slot_1"
+
+
+async def test_intensity_standard_schedule(
+    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
+) -> None:
+    """Test a schedule keeps its own intensity without auto-alternate."""
+    home = _home_on_schedule(devices, ACTIVE_AT, 0)
+    home["diffusionMode"] = "standard"
+    home["deviceDefaults"]["bay1Intensity"] = 10
+
+    await setup_integration(hass, [Platform.SELECT])
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "medium"},
+        blocking=True,
+    )
+    mock_pura.set_intensity.assert_called_once_with(
+        HOME_V5_ID, bay=1, controller=SCHEDULE_ID, intensity=5
+    )
+
+
+async def test_intensity_standard_timer(
+    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
+) -> None:
+    """Test a timer keeps its own intensity without auto-alternate."""
+    home = _home_on_timer(devices, ACTIVE_AT, 0)
+    home["diffusionMode"] = "standard"
+    home["deviceDefaults"]["bay1Intensity"] = 10
+
+    await setup_integration(hass, [Platform.SELECT])
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "medium"
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "strong"},
+        blocking=True,
+    )
+    mock_pura.set_intensity.assert_called_once_with(
+        HOME_V5_ID, bay=1, controller="timer", intensity=10
+    )
