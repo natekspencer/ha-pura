@@ -103,7 +103,7 @@ async def test_intensity_targets_active_bay(
     await hass.services.async_call(
         SELECT_DOMAIN,
         SERVICE_SELECT_OPTION,
-        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "strong"},
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "intense"},
         blocking=True,
     )
 
@@ -140,19 +140,19 @@ async def test_intensity_shows_bay_value(
     # Correct from the first load, despite the timer's intensity of 5
     entry = await setup_integration(hass, [Platform.SELECT])
     coordinator = entry.runtime_data.coordinator
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "intense"
 
     # Changes to the bay's intensity are picked up
     home["deviceDefaults"]["bay1Intensity"] = 7
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
 
     # Each bay has its own intensity when auto-alternate switches bays
     home["bay1"]["activeAt"], home["bay2"]["activeAt"] = 0, ACTIVE_AT
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "subtle"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "gentle"
 
     # With no bay active, the timer's intensity is the only one to show
     home["bay2"]["activeAt"] = 0
@@ -170,7 +170,7 @@ async def test_intensity_auto_alternate_schedule(
 
     entry = await setup_integration(hass, [Platform.SELECT])
     coordinator = entry.runtime_data.coordinator
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "intense"
 
     # Changes go to the bay, leaving the saved schedule alone
     await hass.services.async_call(
@@ -186,13 +186,13 @@ async def test_intensity_auto_alternate_schedule(
     home["bay1"]["activeAt"], home["bay2"]["activeAt"] = 0, ACTIVE_AT
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "subtle"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "gentle"
 
     # With no bay active, the schedule's intensity is the only one to show
     home["bay2"]["activeAt"] = 0
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
     assert hass.states.get(ENTITY_ID).state == "slot_1"
 
 
@@ -205,7 +205,7 @@ async def test_intensity_standard_schedule(
     home["deviceDefaults"]["bay1Intensity"] = 10
 
     await setup_integration(hass, [Platform.SELECT])
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "pronounced"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
 
     await hass.services.async_call(
         SELECT_DOMAIN,
@@ -232,7 +232,7 @@ async def test_intensity_standard_timer(
     await hass.services.async_call(
         SELECT_DOMAIN,
         SERVICE_SELECT_OPTION,
-        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "strong"},
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "intense"},
         blocking=True,
     )
     mock_pura.set_intensity.assert_called_once_with(

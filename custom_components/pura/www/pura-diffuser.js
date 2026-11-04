@@ -34,9 +34,9 @@
 
 const CARD_VERSION = "0.2.0";
 
-const INTENSITY_LEVELS = ["subtle", "light", "medium", "pronounced", "strong"];
-// Mirrors INTENSITY_MAP in the integration's select.py; used for pura.start_timer.
-const INTENSITY_VALUE = { subtle: 1, light: 3, medium: 5, pronounced: 7, strong: 10 };
+const INTENSITY_LEVELS = ["gentle", "subtle", "medium", "strong", "intense"];
+// Mirrors INTENSITY_LEVELS in pypura; used for pura.start_timer.
+const INTENSITY_VALUE = { gentle: 1, subtle: 3, medium: 5, strong: 7, intense: 10 };
 const CONTROLLER_LABEL = {
   default: "Manual",
   schedule: "Schedule",

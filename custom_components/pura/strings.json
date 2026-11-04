@@ -75,11 +75,11 @@
         "name": "Intensity",
         "state": {
           "off": "[%key:common::state::off%]",
+          "gentle": "Gentle",
           "subtle": "Subtle",
-          "light": "Light",
           "medium": "Medium",
-          "pronounced": "Pronounced",
-          "strong": "Strong"
+          "strong": "Strong",
+          "intense": "Intense"
         }
       }
     },
@@ -213,7 +213,7 @@
           "name": "Slot"
         },
         "intensity": {
-          "description": "The intensity of the fragrance. 1 is the lowest (subtle), and 10 is the highest (strong).",
+          "description": "The intensity of the fragrance. 1 is the lowest (gentle), and 10 is the highest (intense).",
           "name": "Intensity"
         },
         "duration": {
