@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pypura import Pura, PuraAuthenticationError
+from pypura import Pura, PuraApiException, PuraAuthenticationError
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -78,6 +78,8 @@ class PuraConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         except PuraAuthenticationError:
             errors["base"] = "invalid_auth"
+        except PuraApiException:
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unknown exception during authentication")
             errors["base"] = "unknown"
