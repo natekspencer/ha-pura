@@ -24,10 +24,19 @@ def get_active_bay(device: dict[str, Any]) -> int | None:
     """Get the bay that is currently diffusing, if any.
 
     Websocket updates are merged into the device, so a bay may keep an old
-    `activeAt` until the next poll. The most recent one is the live bay.
+    `activeAt` until the next poll. The most recent one is the live bay, unless
+    it was activated before a running timer started, which makes it out of date.
     """
     active_at = {i: at for i in (1, 2) if (at := dig(device, f"bay{i}.activeAt"))}
-    return max(active_at, key=active_at.__getitem__, default=None)
+    if not active_at:
+        return None
+    bay = max(active_at, key=active_at.__getitem__)
+    timer = device.get("timer") or {}
+    if device.get("controller") == "timer" and active_at[bay] < (
+        timer.get("start") or 0
+    ):
+        return timer.get("bay") or bay
+    return bay
 
 
 class PuraEntity(

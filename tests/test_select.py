@@ -59,6 +59,26 @@ def test_get_active_bay(bay1: int, bay2: int, expected: int | None) -> None:
     assert get_active_bay(device) == expected
 
 
+def test_get_active_bay_timer() -> None:
+    """Test a bay activated before a running timer started is out of date."""
+    device = {
+        "controller": "timer",
+        "timer": {"bay": 1, "start": ACTIVE_AT},
+        "bay1": {"activeAt": ACTIVE_AT - 120},
+        "bay2": {"activeAt": ACTIVE_AT - 60},
+    }
+    assert get_active_bay(device) == 1
+
+    # Auto-alternate switched bays after the timer started
+    device["bay2"]["activeAt"] = ACTIVE_AT + 60
+    assert get_active_bay(device) == 2
+
+    # The timer only counts while it is in control
+    device |= {"controller": "default"}
+    device["bay2"]["activeAt"] = ACTIVE_AT - 60
+    assert get_active_bay(device) == 2
+
+
 def test_get_active_bay_single_slot() -> None:
     """Test devices without a second bay or with an empty bay."""
     assert get_active_bay({"bay1": {"activeAt": ACTIVE_AT}, "bay2": None}) == 1
@@ -148,3 +168,22 @@ async def test_timer_start_resolves_bay(
     mock_pura.set_intensity.assert_called_once_with(
         HOME_V5_ID, bay=expected_bay, controller="timer", intensity=10
     )
+
+
+async def test_active_fragrance_matches_select(
+    hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]
+) -> None:
+    """Test the active fragrance and select agree when a timer has just started."""
+    home = _home_on_timer(devices, ACTIVE_AT - 120, ACTIVE_AT - 60)
+    home["timer"]["start"] = ACTIVE_AT
+    home["bay1"] |= {"id": ACTIVE_AT, "wearingTime": 3600, "remaining": {"percent": 90}}
+    home["bay2"] |= {
+        "id": ACTIVE_AT,
+        "wearingTime": 3600,
+        "remaining": {"percent": 90},
+        "fragrance": {"name": "White Tea"},
+    }
+
+    await setup_integration(hass, [Platform.SELECT, Platform.SENSOR])
+    assert hass.states.get(ENTITY_ID).state == "slot_1"
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
