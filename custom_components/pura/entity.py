@@ -94,6 +94,8 @@ class PuraEntity(
         # With auto-alternate on, each bay keeps its own intensity whatever is running,
         # and the Pura app changes that rather than the timer or saved schedule.
         if device.get("diffusionMode") == "oscillation-multi-bay":
+            bay = bay or data.get("bay")
+            intensity = dig(device, f"deviceDefaults.bay{bay}Intensity")
             data["controller"] = "default"
             data["intensity"] = intensity or data["intensity"]
         return data

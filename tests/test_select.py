@@ -154,8 +154,14 @@ async def test_intensity_shows_bay_value(
     await hass.async_block_till_done()
     assert hass.states.get(INTENSITY_ENTITY_ID).state == "gentle"
 
-    # With no bay active, the timer's intensity is the only one to show
+    # With no bay active, the timer's bay is the one a change would go to
     home["bay2"]["activeAt"] = 0
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+
+    # The timer's intensity is the only one left without the bay's own
+    home["deviceDefaults"] = {}
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(INTENSITY_ENTITY_ID).state == "medium"
@@ -188,11 +194,11 @@ async def test_intensity_auto_alternate_schedule(
     await hass.async_block_till_done()
     assert hass.states.get(INTENSITY_ENTITY_ID).state == "gentle"
 
-    # With no bay active, the schedule's intensity is the only one to show
+    # With no bay active, the schedule's bay is the one a change would go to
     home["bay2"]["activeAt"] = 0
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(INTENSITY_ENTITY_ID).state == "strong"
+    assert hass.states.get(INTENSITY_ENTITY_ID).state == "intense"
     assert hass.states.get(ENTITY_ID).state == "slot_1"
 
 
