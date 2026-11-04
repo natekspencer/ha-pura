@@ -5,6 +5,10 @@
     "@natekspencer"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
   "documentation": "https://github.com/natekspencer/ha-pura",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
@@ -14,7 +18,7 @@
     "pypura"
   ],
   "requirements": [
-    "pypura==3.1.0",
+    "pypura==4.0.0",
     "ical"
   ],
   "version": "0.0.0"

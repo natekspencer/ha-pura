@@ -83,6 +83,18 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Enable custom integrations in all tests."""
 
 
+@pytest.fixture(autouse=True)
+def mock_frontend(hass: HomeAssistant) -> Generator[MagicMock]:
+    """Stub the frontend and http dependencies used to serve the Pura card.
+
+    The real frontend needs the large home-assistant-frontend package.
+    """
+    hass.config.components.update({"frontend", "http"})
+    hass.http = MagicMock(async_register_static_paths=AsyncMock())
+    with patch("custom_components.pura.add_extra_js_url") as add_extra_js_url:
+        yield add_extra_js_url
+
+
 @pytest.fixture
 def devices() -> dict[str, dict[str, Any]]:
     """Return a copy of the device data returned by the API."""

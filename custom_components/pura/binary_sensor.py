@@ -50,16 +50,14 @@ SENSORS: dict[tuple[str, ...], tuple[PuraBinarySensorEntityDescription, ...]] = 
     ("wall", "plus"): (  # dual fragrance
         PuraBinarySensorEntityDescription(
             key="bay_1_low_fragrance",
-            translation_key="bay_low_fragrance",
-            translation_placeholders={"bay": "1"},
+            translation_key="bay_1_low_fragrance",
             device_class=BinarySensorDeviceClass.PROBLEM,
             available_fn=lambda data: has_fragrance(data, 1),
             on_fn=lambda data: is_low_fragrance(data, 1),
         ),
         PuraBinarySensorEntityDescription(
             key="bay_2_low_fragrance",
-            translation_key="bay_low_fragrance",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_low_fragrance",
             device_class=BinarySensorDeviceClass.PROBLEM,
             available_fn=lambda data: has_fragrance(data, 2),
             on_fn=lambda data: is_low_fragrance(data, 2),

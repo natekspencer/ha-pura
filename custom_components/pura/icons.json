@@ -10,11 +10,11 @@
       "intensity": {
         "default": "mdi:signal-cellular-outline",
         "state": {
-          "subtle": "mdi:signal-cellular-1",
-          "light": "mdi:signal-cellular-2",
+          "gentle": "mdi:signal-cellular-1",
+          "subtle": "mdi:signal-cellular-2",
           "medium": "mdi:signal-cellular-2",
-          "pronounced": "mdi:signal-cellular-2",
-          "strong": "mdi:signal-cellular-3"
+          "strong": "mdi:signal-cellular-2",
+          "intense": "mdi:signal-cellular-3"
         }
       }
     },
@@ -22,10 +22,16 @@
       "active_fragrance": {
         "default": "mdi:scent"
       },
-      "bay_fragrance": {
+      "bay_1_fragrance": {
         "default": "mdi:scent"
       },
-      "bay_fragrance_remaining": {
+      "bay_1_fragrance_remaining": {
+        "default": "mdi:scent"
+      },
+      "bay_2_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_2_fragrance_remaining": {
         "default": "mdi:scent"
       },
       "controller": {

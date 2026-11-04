@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pypura.utils import dig, get_device_name, get_model_name
 
 from homeassistant.helpers.device_registry import (
@@ -16,6 +18,11 @@ from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 
 UPDATE_INTERVAL = 30
+
+
+def get_active_bay(device: dict[str, Any]) -> int | None:
+    """Get the bay that is currently diffusing, if any."""
+    return next((i for i in (1, 2) if dig(device, f"bay{i}.activeAt")), None)
 
 
 class PuraEntity(
@@ -73,16 +80,22 @@ class PuraEntity(
     def _intensity_data(self) -> dict:
         """Get the intensity data."""
         device = self.get_device()
-        if (controller := device["controller"]) == "timer" and device[controller]:
-            return device[controller] | {"controller": controller}
+        controller = device["controller"]
+        bay = get_active_bay(device) or 0
+        intensity = dig(device, f"deviceDefaults.bay{bay}Intensity") if bay else None
+        data = {"bay": bay, "controller": str(controller), "intensity": intensity}
+        if controller == "timer" and device[controller]:
+            data = device[controller] | {"controller": controller}
         elif controller != "default":
             for schedule in device.get("schedules") or []:
                 if schedule.get("id") == controller:
-                    return schedule | {"controller": controller}
-        bay = 0
-        if (data := device["bay1"]) and data["activeAt"]:
-            bay = 1
-        elif (data := device.get("bay2")) and data["activeAt"]:
-            bay = 2
-        intensity = device["deviceDefaults"][f"bay{bay}Intensity"] if bay else None
-        return {"bay": bay, "controller": str(controller), "intensity": intensity}
+                    data = schedule | {"controller": controller}
+                    break
+        # With auto-alternate on, each bay keeps its own intensity whatever is running,
+        # and the Pura app changes that rather than the timer or saved schedule.
+        if device.get("diffusionMode") == "oscillation-multi-bay":
+            bay = bay or data.get("bay")
+            intensity = dig(device, f"deviceDefaults.bay{bay}Intensity")
+            data["controller"] = "default"
+            data["intensity"] = intensity or data["intensity"]
+        return data

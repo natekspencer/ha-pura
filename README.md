@@ -79,7 +79,7 @@ Entities are created based on what each device supports. "Home" refers to all ge
 | Entity                    | Type   | Devices            | Description                                                                                                                                                                                                                                                                                                                           |
 | ------------------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fragrance                 | Select | Home, Plus, Mini   | The primary control. `Off` stops the diffuser and `Slot 1`/`Slot 2` runs that fragrance continuously. Only installed slots are listed. To run for a limited time, use the [`start_timer`](#start_timer) action instead.                                                                                                               |
-| Intensity                 | Select | Home, Plus, Mini   | Intensity of the active fragrance: `Subtle`, `Light`, `Medium`, `Pronounced` or `Strong`. A fragrance must already be running to change it. `Off` stops the diffuser, the same as setting Fragrance to `Off`.                                                                                                                         |
+| Intensity                 | Select | Home, Plus, Mini   | Intensity of the active fragrance: `Gentle`, `Subtle`, `Medium`, `Strong` or `Intense`. A fragrance must already be running to change it. `Off` stops the diffuser, the same as setting Fragrance to `Off`.                                                                                                                         |
 | Nightlight                | Light  | Home, Mini         | The nightlight, including brightness and color.                                                                                                                                                                                                                                                                                       |
 | Away mode                 | Switch | Home, Plus, Mini † | Enables Pura's own away mode, which pauses the diffuser when the phone running the Pura app leaves the area. It does **not** mean you are away. To turn diffusers off when nobody is home, use a Home Assistant automation that sets Fragrance to `Off` instead. While Pura's away mode is active, the diffuser cannot be controlled. |
 | Auto-alternate fragrances | Switch | Home v4/v5, Plus † | Alternates between both fragrances. Only created for devices that support multiple diffusion modes.                                                                                                                                                                                                                                   |
@@ -111,7 +111,41 @@ A single **Pura** calendar entity also shows the schedules for all of your devic
 
 > ℹ️ Pura devices do not measure how much oil is left. Fragrance remaining is an estimate calculated by Pura based on runtime and intensity, and matches what the Pura app shows.
 
-For a dashboard card designed for these entities, see the community-made [Pura card](https://github.com/sabourinj/ha-pura-card).
+## 🎛️ Dashboard card
+
+The integration includes the Pura Diffuser dashboard card, based on [sabourinj's Pura card](https://github.com/sabourinj/ha-pura-card). It loads automatically, so you don't need to add a dashboard resource.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/card-dark.png">
+    <img alt="Pura cards for two two-slot home diffusers, showing each slot's fragrance vial and amount left with intensity, timer, nightlight and mode controls, and for two Pura Car diffusers with their fragrance pods and battery level" src="docs/card-light.png">
+  </picture>
+</p>
+
+Add **Pura Diffuser** from the dashboard card picker and choose your device, or use YAML:
+
+```yaml
+type: custom:pura-diffuser
+device_id: 0123456789abcdef0123456789abcdef
+```
+
+The card shows each fragrance slot as a vial filled to the percentage left. When Pura provides a picture of the fragrance's vial, the card shows that instead, with a bar for the amount left. Tap a slot to start or stop it. On Car diffusers, which can't be controlled from Home Assistant, tapping a slot opens its details instead. Depending on what your device supports, the card also shows a power button, intensity, timer presets with a countdown, the nightlight, and the Auto-alternate, Ambient and Away mode toggles. Each appears only when the device has it, so Car diffusers show none of these controls, and models without a nightlight (such as the Plus) don't show the nightlight toggle.
+
+| Option            | Type    | Default         | Description                                                                                                  |
+| ----------------- | ------- | --------------- | ------------------------------------------------------------------------------------------------------------ |
+| `device_id`       | string  | **required**    | The Pura device (the visual editor gives you a picker).                                                      |
+| `name`            | string  | device name     | Overrides the card title.                                                                                    |
+| `show_intensity`  | boolean | `true`          | Show the intensity control.                                                                                  |
+| `show_timer`      | boolean | `true`          | Show the timer presets and countdown.                                                                        |
+| `show_nightlight` | boolean | `true`          | Show the nightlight toggle.                                                                                  |
+| `show_settings`   | boolean | `true`          | Show the Auto-alternate, Ambient and Away mode toggles.                                                      |
+| `timer_durations` | list    | `[30, 60, 120]` | Timer preset lengths in minutes.                                                                             |
+| `timer_intensity` | number  | `5`             | Intensity (1–10) for timers started while the diffuser is off.                                               |
+| `low_threshold`   | number  | Pura's flag     | Show the "% left" in red at or below this percentage. Without it, Pura's low fragrance flag is used (or 15). |
+
+The card finds the device's entities on its own, so renamed entities keep working.
+
+> ℹ️ If you use sabourinj's card from HACS, it keeps working alongside this one. To switch, change `custom:pura-card` to `custom:pura-diffuser` and check your options, since some differ. You can then remove the HACS card and its dashboard resource.
 
 ## 🎬 Actions
 
@@ -126,7 +160,7 @@ Start a fragrance timer.
 | `area_id`\*   | No       | Area     | None     | The area(s) to target. If an area is specified, all Pura devices in that area will be targeted. (e.g., `living_room`).                |
 | `device_id`\* | No       | Device   | None     | The device(s) to target, filtered by Pura models.                                                                                     |
 | `slot`        | No       | Select   | None     | The slot (`"1"` or `"2"`) of an available fragrance. Leave blank to automatically select the fragrance with the most scent remaining. |
-| `intensity`   | Yes      | Number   | 4        | The intensity of the fragrance. 1 is the lowest (subtle), and 10 is the highest (strong).                                             |
+| `intensity`   | Yes      | Number   | 4        | The intensity of the fragrance. 1 is the lowest (gentle), and 10 is the highest (intense).                                             |
 | `duration`    | Yes      | Duration | 00:30:00 | How long the diffuser should run for.                                                                                                 |
 
 \* - Either an area_id with Pura devices or a valid Pura device_id must be supplied or an error will occur.

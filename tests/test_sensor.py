@@ -287,3 +287,97 @@ async def test_migrate_device_discovered_after_setup(
         )
         if entry.unique_id.endswith("installed")
     ] == [old.id]
+
+
+VIAL_URL = "https://example.com/vials/volcano.png"
+
+
+async def test_fragrance_vial_picture(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    mini_only: dict[str, dict[str, Any]],
+) -> None:
+    """Test a single-slot fragrance sensor exposes its vial image and color."""
+    mini_only[HOME_MINI_ID]["bay1"]["fragrance"] |= {
+        "vialUrl": VIAL_URL,
+        "placeholderColor": "646b51",
+    }
+    await _setup(hass, config_entry)
+
+    state = hass.states.get("sensor.home_mini_fragrance")
+    assert state.state == "Volcano"
+    assert state.attributes["entity_picture"] == VIAL_URL
+    assert state.attributes["color"] == "#646B51"
+    assert (
+        "entity_picture"
+        not in hass.states.get("sensor.home_mini_fragrance_remaining").attributes
+    )
+
+    # A new fragrance's image and color replace the old ones on refresh
+    coordinator = config_entry.runtime_data.coordinator
+    fragrance = mini_only[HOME_MINI_ID]["bay1"]["fragrance"]
+    fragrance |= {"vialUrl": f"{VIAL_URL}?v=2", "placeholderColor": "#112233"}
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.home_mini_fragrance")
+    assert state.attributes["entity_picture"] == f"{VIAL_URL}?v=2"
+    assert state.attributes["color"] == "#112233"
+
+    # ...and are removed when Pura stops providing them
+    del fragrance["vialUrl"], fragrance["placeholderColor"]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.home_mini_fragrance")
+    assert state.state == "Volcano"
+    assert "entity_picture" not in state.attributes
+    assert "color" not in state.attributes
+
+
+async def test_bay_fragrance_vial_picture(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test each slot's fragrance sensor exposes its own vial image and color."""
+    home = devices[HOME_V5_ID]
+    home |= {
+        "controller": "default",
+        "schedules": [],
+        "timer": None,
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    for bay, fragrance in (
+        (
+            "bay1",
+            {"name": "Volcano", "vialUrl": VIAL_URL, "placeholderColor": "#A1B2C3"},
+        ),
+        ("bay2", {"name": "White Tea", "placeholderColor": "not a color"}),
+    ):
+        home[bay] |= {
+            "id": 1700000000,
+            "activeAt": 0,
+            "wearingTime": 3600,
+            "fragrance": fragrance,
+            "remaining": {"percent": 90},
+        }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+
+    slot_1 = hass.states.get("sensor.home_v5_slot_1_fragrance")
+    assert slot_1.attributes["entity_picture"] == VIAL_URL
+    assert slot_1.attributes["color"] == "#A1B2C3"
+    slot_2 = hass.states.get("sensor.home_v5_slot_2_fragrance")
+    assert slot_2.state == "White Tea"
+    assert "entity_picture" not in slot_2.attributes
+    assert "color" not in slot_2.attributes
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "none"
+
+    # The active fragrance follows the bay that is diffusing
+    home["bay2"]["activeAt"] = 1700000000
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "White Tea"

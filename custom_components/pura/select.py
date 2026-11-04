@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import functools
 
+from pypura.const import INTENSITY_LEVELS
 from pypura.utils import has_fragrance, parse_intensity
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
@@ -16,9 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
 from .const import DOMAIN
-from .entity import PuraEntity
-
-INTENSITY_MAP = {"subtle": 1, "light": 3, "medium": 5, "pronounced": 7, "strong": 10}
+from .entity import PuraEntity, get_active_bay
 
 
 async def async_setup_entry(
@@ -54,7 +53,7 @@ async def async_setup_entry(
 class PuraSelectEntityDescription(SelectEntityDescription):
     """Pura select entity description."""
 
-    current_fn: Callable[[dict], str]
+    current_fn: Callable[[PuraSelectEntity], str]
     options_fn: Callable[[dict], list[str]] | None = None
     select_fn: Callable[[PuraSelectEntity, str], functools.partial[bool]]
 
@@ -64,7 +63,9 @@ SELECT_DESCRIPTIONS = {
         PuraSelectEntityDescription(
             key="fragrance",
             translation_key="fragrance",
-            current_fn=lambda data: "off" if (b := data["bay"]) == 0 else f"slot_{b}",
+            current_fn=lambda select: (
+                f"slot_{bay}" if (bay := select._current_bay) else "off"
+            ),
             options_fn=lambda data: (
                 ["off"] + [f"slot_{i}" for i in (1, 2) if has_fragrance(data, i)]
             ),
@@ -78,14 +79,16 @@ SELECT_DESCRIPTIONS = {
             key="intensity",
             translation_key="intensity",
             entity_category=EntityCategory.CONFIG,
-            current_fn=lambda data: parse_intensity(data["intensity"]),
-            options=["off"] + list(INTENSITY_MAP),
+            current_fn=lambda select: parse_intensity(
+                select._intensity_data["intensity"]
+            ),
+            options=["off"] + list(INTENSITY_LEVELS),
             select_fn=lambda select, option: functools.partial(
                 select.coordinator.api.set_intensity,
                 select._device_id,
-                bay=select._intensity_data["bay"],
+                bay=select._current_bay,
                 controller=select._intensity_data["controller"],
-                intensity=INTENSITY_MAP[option],
+                intensity=INTENSITY_LEVELS[option],
             ),
         ),
     ),
@@ -98,9 +101,18 @@ class PuraSelectEntity(PuraEntity, SelectEntity):
     entity_description: PuraSelectEntityDescription
 
     @property
+    def _current_bay(self) -> int:
+        """Return the current bay, or 0 if there is none.
+
+        A timer or schedule keeps the bay it started with, which goes stale when
+        auto-alternate switches bays, so prefer the bay that is diffusing.
+        """
+        return get_active_bay(self.get_device()) or self._intensity_data["bay"]
+
+    @property
     def current_option(self) -> str:
         """Return the selected entity option to represent the entity state."""
-        return self.entity_description.current_fn(self._intensity_data)
+        return self.entity_description.current_fn(self)
 
     @property
     def options(self) -> list[str]:

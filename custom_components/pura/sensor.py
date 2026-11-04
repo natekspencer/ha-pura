@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import re
 from typing import Any
 
 from pypura.utils import (
+    dig,
     get_fragrance_name,
     get_fragrance_remaining,
     get_fragrance_runtime,
@@ -31,14 +33,31 @@ from homeassistant.util.dt import UTC, utc_from_timestamp
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .entity import PuraEntity
+from .entity import PuraEntity, get_active_bay
+
+HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
+
+
+def get_fragrance_vial_url(device: dict[str, Any], bay: int) -> str | None:
+    """Get the URL of the fragrance vial image for a bay."""
+    return dig(device, f"bay{bay}.fragrance.vialUrl") or None
+
+
+def get_fragrance_attributes(device: dict[str, Any], bay: int) -> dict[str, Any]:
+    """Get the extra state attributes for a bay's fragrance."""
+    color = dig(device, f"bay{bay}.fragrance.placeholderColor")
+    if isinstance(color, str) and (match := HEX_COLOR.fullmatch(color.strip())):
+        return {"color": f"#{match[1].upper()}"}
+    return {}
 
 
 @dataclass(frozen=True, kw_only=True)
 class PuraSensorEntityDescription(SensorEntityDescription):
     """Pura sensor entity description."""
 
+    attributes_fn: Callable[[dict], dict[str, Any]] | None = None
     available_fn: Callable[[dict], bool] | None = None
+    picture_fn: Callable[[dict], str | None] | None = None
     value_fn: Callable[[dict], Any | None]
 
 
@@ -65,7 +84,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="fragrance",
             translation_key="fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 1),
             available_fn=lambda data: has_fragrance(data, 1),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
@@ -95,27 +116,23 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             key="active_fragrance",
             translation_key="active_fragrance",
             value_fn=lambda data: (
-                get_fragrance_name(data, 1)
-                if (bay := data["bay1"]) and bay["activeAt"]
-                else (
-                    get_fragrance_name(data, 2)
-                    if (bay := data["bay2"]) and bay["activeAt"]
-                    else "none"
-                )
+                get_fragrance_name(data, bay)
+                if (bay := get_active_bay(data))
+                else "none"
             ),
         ),
         PuraSensorEntityDescription(
             key="bay_1",
-            translation_key="bay_fragrance",
-            translation_placeholders={"bay": 1},
+            translation_key="bay_1_fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 1),
             available_fn=lambda data: has_fragrance(data, 1),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 1),
             value_fn=lambda data: get_fragrance_name(data, 1),
         ),
         PuraSensorEntityDescription(
             key="bay_1_fragrance_remaining",
-            translation_key="bay_fragrance_remaining",
-            translation_placeholders={"bay": 1},
+            translation_key="bay_1_fragrance_remaining",
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -125,8 +142,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1_runtime",
-            translation_key="bay_runtime",
-            translation_placeholders={"bay": "1"},
+            translation_key="bay_1_runtime",
             device_class=SensorDeviceClass.DURATION,
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=UnitOfTime.SECONDS,
@@ -137,8 +153,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_1_installed",
-            translation_key="bay_installed",
-            translation_placeholders={"bay": "1"},
+            translation_key="bay_1_installed",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
@@ -147,16 +162,16 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2",
-            translation_key="bay_fragrance",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_fragrance",
             entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, 2),
             available_fn=lambda data: has_fragrance(data, 2),
+            picture_fn=lambda data: get_fragrance_vial_url(data, 2),
             value_fn=lambda data: get_fragrance_name(data, 2),
         ),
         PuraSensorEntityDescription(
             key="bay_2_fragrance_remaining",
-            translation_key="bay_fragrance_remaining",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_fragrance_remaining",
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -166,8 +181,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2_runtime",
-            translation_key="bay_runtime",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_runtime",
             device_class=SensorDeviceClass.DURATION,
             entity_category=EntityCategory.DIAGNOSTIC,
             native_unit_of_measurement=UnitOfTime.SECONDS,
@@ -178,8 +192,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         ),
         PuraSensorEntityDescription(
             key="bay_2_installed",
-            translation_key="bay_installed",
-            translation_placeholders={"bay": "2"},
+            translation_key="bay_2_installed",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
@@ -335,6 +348,20 @@ class PuraSensorEntity(PuraEntity, SensorEntity):
         if available_fn := self.entity_description.available_fn:
             return available_fn(self.get_device())
         return super().available
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the fragrance color, if any."""
+        if attributes_fn := self.entity_description.attributes_fn:
+            return attributes_fn(self.get_device()) or None
+        return None
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return the fragrance vial image, if any."""
+        if picture_fn := self.entity_description.picture_fn:
+            return picture_fn(self.get_device())
+        return super().entity_picture
 
     @property
     def native_value(self) -> str | int | datetime | None:
