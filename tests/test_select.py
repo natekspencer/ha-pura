@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
+from custom_components.pura.entity import get_active_bay
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
@@ -13,6 +16,29 @@ from .conftest import HOME_V5_ID
 
 ENTITY_ID = "select.home_v5_fragrance"
 ACTIVE_AT = 1700000000
+
+
+@pytest.mark.parametrize(
+    ("bay1", "bay2", "expected"),
+    [
+        (0, 0, None),
+        (ACTIVE_AT, 0, 1),
+        (0, ACTIVE_AT, 2),
+        (ACTIVE_AT, ACTIVE_AT + 60, 2),  # bay 1 retained after a partial update
+        (ACTIVE_AT + 60, ACTIVE_AT, 1),
+    ],
+)
+def test_get_active_bay(bay1: int, bay2: int, expected: int | None) -> None:
+    """Test the most recently activated bay is the active one."""
+    device = {"bay1": {"activeAt": bay1}, "bay2": {"activeAt": bay2}}
+    assert get_active_bay(device) == expected
+
+
+def test_get_active_bay_single_slot() -> None:
+    """Test devices without a second bay or with an empty bay."""
+    assert get_active_bay({"bay1": {"activeAt": ACTIVE_AT}, "bay2": None}) == 1
+    assert get_active_bay({"bay1": {"activeAt": ACTIVE_AT}}) == 1
+    assert get_active_bay({"bay1": None, "bay2": None}) is None
 
 
 async def test_fragrance_follows_active_bay(
