@@ -116,3 +116,35 @@ async def test_intensity_targets_active_bay(
     mock_pura.set_intensity.assert_called_once_with(
         HOME_V5_ID, bay=2, controller="timer", intensity=10
     )
+
+
+@pytest.mark.parametrize(
+    ("bay2_active_at", "expected_bay"),
+    [
+        (ACTIVE_AT - 60, 1),  # retained from before the timer started
+        (ACTIVE_AT + 60, 2),  # auto-alternate switched bays after the timer started
+    ],
+)
+async def test_timer_start_resolves_bay(
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    bay2_active_at: int,
+    expected_bay: int,
+) -> None:
+    """Test a bay activated before the timer started doesn't override the timer."""
+    home = _home_on_timer(devices, 0, bay2_active_at)
+    home["timer"]["start"] = ACTIVE_AT
+
+    await setup_integration(hass, [Platform.SELECT])
+    assert hass.states.get(ENTITY_ID).state == f"slot_{expected_bay}"
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: INTENSITY_ENTITY_ID, ATTR_OPTION: "strong"},
+        blocking=True,
+    )
+    mock_pura.set_intensity.assert_called_once_with(
+        HOME_V5_ID, bay=expected_bay, controller="timer", intensity=10
+    )

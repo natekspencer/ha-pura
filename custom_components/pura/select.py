@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import functools
 
-from pypura.utils import has_fragrance, parse_intensity
+from pypura.utils import dig, has_fragrance, parse_intensity
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
@@ -106,9 +106,19 @@ class PuraSelectEntity(PuraEntity, SelectEntity):
         """Return the current bay, or 0 if there is none.
 
         A timer or schedule keeps the bay it started with, which goes stale when
-        auto-alternate switches bays, so prefer the bay that is diffusing.
+        auto-alternate switches bays, so prefer the bay that is diffusing. A bay
+        activated before a timer started is out of date, so use the timer's bay.
         """
-        return get_active_bay(self.get_device()) or self._intensity_data["bay"]
+        device = self.get_device()
+        data = self._intensity_data
+        bay = get_active_bay(device)
+        if (
+            bay
+            and data["controller"] == "timer"
+            and dig(device, f"bay{bay}.activeAt") < (data.get("start") or 0)
+        ):
+            return data["bay"]
+        return bay or data["bay"]
 
     @property
     def current_option(self) -> str:
