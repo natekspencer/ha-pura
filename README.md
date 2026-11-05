@@ -87,6 +87,8 @@ Entities are created based on what each device supports. "Home" refers to all ge
 
 † Created for any device that reports support for the feature, so it may also appear on other models as Pura adds support. The devices listed are those known to support it.
 
+Turning Away mode off deletes any geofence set in the Pura app. Turning it back on from Home Assistant then uses your Home Assistant home location with a 150 m radius.
+
 ### Sensors
 
 | Entity                | Devices          | Description                                                                                                                                                              |
