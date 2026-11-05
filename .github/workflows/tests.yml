@@ -154,6 +154,8 @@ jobs:
       - name: Open pull request
         uses: peter-evans/create-pull-request@v8
         with:
+          # PRs opened with the default token don't start pull_request workflows
+          token: ${{ secrets.BUMP_PR_TOKEN || github.token }}
           branch: bump-ha-minimum
           delete-branch: true
           commit-message: Require Home Assistant ${{ needs.find-minimum.outputs.version }}
