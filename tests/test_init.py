@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 
 from pypura import PuraApiException
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pura.const import DOMAIN
 from homeassistant.const import Platform
@@ -15,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.loader import async_get_integration
 
-from . import setup_integration
+from . import MockConfigEntry, setup_integration
 
 
 async def test_card_registered(

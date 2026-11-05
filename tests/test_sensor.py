@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.sensor import _async_migrate_entities
@@ -15,6 +14,7 @@ from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
+from . import MockConfigEntry
 from .conftest import HOME_MINI_ID, HOME_V5_ID
 
 # TODO: Remove the migration tests along with _async_migrate_entities after April 2027
