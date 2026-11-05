@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pura.const import DOMAIN
 from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+
+try:
+    from pytest_homeassistant.common import MockConfigEntry
+except ImportError:  # Home Assistant < 2026.11
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 async def setup_integration(
