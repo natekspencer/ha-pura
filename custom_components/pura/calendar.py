@@ -111,7 +111,7 @@ class PuraCalendarEntity(CoordinatorEntity[PuraDataUpdateCoordinator], CalendarE
                 ),
             )
             for device in self.coordinator.devices.values()
-            if device.get("modelType") in ("wall", "plus", "mini")
+            if device.get("modelType") in ("wall", "plus", "mini", "luxe")
             for schedule in device.get("schedules", [])
             if schedule.get("disableUntil") != -1
         )

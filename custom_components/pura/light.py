@@ -5,6 +5,8 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+from pypura.utils import dig
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_RGB_COLOR,
@@ -44,6 +46,14 @@ async def async_setup_entry(
                 )
                 for device_id, device_type in new_devices
                 if device_type in ("wall", "mini")
+                # The Luxe isn't confirmed to have one, so rely on what it reports
+                or (
+                    device_type == "luxe"
+                    and dig(
+                        coordinator.get_device(device_type, device_id),
+                        "deviceDefaults.nightlight",
+                    )
+                )
             )
         added_devices = current_devices
 

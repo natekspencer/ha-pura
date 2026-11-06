@@ -119,7 +119,7 @@ const fragranceTint = (hex, darkMode) => {
   return `hsl(${Math.round((h * 60 + 360) % 360)} ${Math.round(sat * 100)}% ${Math.round(light * 100)}%)`;
 };
 
-// Two-slot sensors have a translation key per slot (e.g. "bay_2_runtime"). It's set by the
+// Multi-slot sensors have a translation key per slot (e.g. "bay_2_runtime"). It's set by the
 // integration, so unlike the entity ID or name, renaming the entity can't change it.
 const BAY_KEY = /^bay_(\d)_(fragrance|fragrance_remaining|runtime)$/;
 const LOW_KEY = /^(?:bay_(\d)_)?low_fragrance$/;

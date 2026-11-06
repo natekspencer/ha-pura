@@ -3,18 +3,34 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.services import SERVICE_START_TIMER
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
-from . import MockConfigEntry
-from .conftest import HOME_V5_ID
+from . import MockConfigEntry, setup_integration
+from .conftest import HOME_LUXE_ID, HOME_V5_ID
+
+
+async def _start_luxe_timer(hass: HomeAssistant, **data: Any) -> None:
+    """Start a timer on the Home Luxe."""
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_START_TIMER,
+        {
+            ATTR_ENTITY_ID: "switch.home_luxe_away_mode",
+            "intensity": 5,
+            "duration": {"minutes": 30},
+        }
+        | data,
+        blocking=True,
+    )
 
 
 async def test_start_timer(
@@ -88,4 +104,57 @@ async def test_start_timer_entry_not_loaded(
         )
 
     assert err.value.translation_key == "no_devices_found"
+    mock_pura.set_timer.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("bays", "expected"),
+    [
+        ({"bay3": {"code": "A", "remaining": {"percent": 90}}}, 3),
+        (
+            {
+                "bay1": {"code": "A", "remaining": {"percent": 50}},
+                "bay2": {"code": "B", "remaining": {"percent": 50}, "wearingTime": 9},
+                "bay4": {"code": "C", "remaining": {"percent": 80}},
+            },
+            4,
+        ),
+        (
+            {
+                "bay2": {"code": "B", "remaining": {"percent": 50}, "wearingTime": 9},
+                "bay3": {"code": "C", "remaining": {"percent": 50}, "wearingTime": 5},
+            },
+            3,
+        ),
+        (
+            {
+                "bay3": {"code": "C", "remaining": {"percent": 50}},
+                "bay4": {"code": "D", "remaining": {"percent": 50}},
+            },
+            3,
+        ),
+    ],
+    ids=["only_slot", "most_remaining", "least_runtime", "lowest_slot"],
+)
+async def test_start_timer_picks_best_slot(
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    bays: dict[str, dict[str, Any]],
+    expected: int,
+) -> None:
+    """Test a timer without a slot picks the best of the Luxe's four slots."""
+    devices[HOME_LUXE_ID] |= {f"bay{i}": None for i in (1, 2, 3, 4)} | bays
+    await setup_integration(hass, [Platform.SWITCH])
+    await _start_luxe_timer(hass)
+    assert mock_pura.set_timer.call_args.kwargs["bay"] == expected
+
+
+async def test_start_timer_empty_luxe_slot(
+    hass: HomeAssistant, mock_pura: MagicMock
+) -> None:
+    """Test a timer can't start on an empty Luxe slot."""
+    await setup_integration(hass, [Platform.SWITCH])
+    with pytest.raises(ServiceValidationError):
+        await _start_luxe_timer(hass, slot=3)
     mock_pura.set_timer.assert_not_called()

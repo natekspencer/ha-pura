@@ -19,6 +19,8 @@ start_timer:
             - integration: pura
               model: Home Plus
             - integration: pura
+              model: Home Luxe
+            - integration: pura
               model: Home
           multiple: true
     device_id:
@@ -35,6 +37,8 @@ start_timer:
           options:
             - "1"
             - "2"
+            - "3"
+            - "4"
     intensity:
       required: true
       example: 4

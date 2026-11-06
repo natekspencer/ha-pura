@@ -45,6 +45,12 @@
       "bay_2_low_fragrance": {
         "name": "Slot 2 low fragrance"
       },
+      "bay_3_low_fragrance": {
+        "name": "Slot 3 low fragrance"
+      },
+      "bay_4_low_fragrance": {
+        "name": "Slot 4 low fragrance"
+      },
       "connected": {
         "name": "Connected"
       },
@@ -68,7 +74,9 @@
         "state": {
           "off": "Off",
           "slot_1": "Slot 1",
-          "slot_2": "Slot 2"
+          "slot_2": "Slot 2",
+          "slot_3": "Slot 3",
+          "slot_4": "Slot 4"
         }
       },
       "intensity": {
@@ -126,6 +134,40 @@
       },
       "bay_2_runtime": {
         "name": "Slot 2 runtime"
+      },
+      "bay_3_fragrance": {
+        "name": "Slot 3 fragrance",
+        "state_attributes": {
+          "color": {
+            "name": "Color"
+          }
+        }
+      },
+      "bay_3_fragrance_remaining": {
+        "name": "Slot 3 fragrance remaining"
+      },
+      "bay_3_installed": {
+        "name": "Slot 3 installed"
+      },
+      "bay_3_runtime": {
+        "name": "Slot 3 runtime"
+      },
+      "bay_4_fragrance": {
+        "name": "Slot 4 fragrance",
+        "state_attributes": {
+          "color": {
+            "name": "Color"
+          }
+        }
+      },
+      "bay_4_fragrance_remaining": {
+        "name": "Slot 4 fragrance remaining"
+      },
+      "bay_4_installed": {
+        "name": "Slot 4 installed"
+      },
+      "bay_4_runtime": {
+        "name": "Slot 4 runtime"
       },
       "controller": {
         "name": "Controller",

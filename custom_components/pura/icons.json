@@ -34,6 +34,18 @@
       "bay_2_fragrance_remaining": {
         "default": "mdi:scent"
       },
+      "bay_3_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_3_fragrance_remaining": {
+        "default": "mdi:scent"
+      },
+      "bay_4_fragrance": {
+        "default": "mdi:scent"
+      },
+      "bay_4_fragrance_remaining": {
+        "default": "mdi:scent"
+      },
       "controller": {
         "default": "mdi:toggle-switch-outline",
         "state": {

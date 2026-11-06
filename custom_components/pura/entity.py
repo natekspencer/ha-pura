@@ -14,7 +14,7 @@ from homeassistant.helpers.device_registry import (
 from homeassistant.helpers.entity import DeviceInfo, EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import BAYS, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 
 UPDATE_INTERVAL = 30
@@ -22,7 +22,7 @@ UPDATE_INTERVAL = 30
 
 def get_active_bay(device: dict[str, Any]) -> int | None:
     """Get the bay that is currently diffusing, if any."""
-    return next((i for i in (1, 2) if dig(device, f"bay{i}.activeAt")), None)
+    return next((i for i in BAYS if dig(device, f"bay{i}.activeAt")), None)
 
 
 class PuraEntity(

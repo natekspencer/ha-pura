@@ -18,5 +18,7 @@ BACKOFF_MULTIPLIER: Final = 2  # Max backoff = user interval * this
 MIN_MAX_BACKOFF: Final = 300  # 5 minute floor for max backoff
 
 ATTR_SLOT: Final = "slot"
+
+BAYS: Final = (1, 2, 3, 4)
 ATTR_INTENSITY: Final = "intensity"
 ATTR_DURATION: Final = "duration"

@@ -18,6 +18,7 @@ HOME_V3_ID = "aa:aa:aa:aa:aa:01"
 HOME_V5_ID = "aa:aa:aa:aa:aa:02"
 HOME_MINI_ID = "aa:aa:aa:aa:aa:03"
 CAR_PRO_ID = "aa:aa:aa:aa:aa:04"
+HOME_LUXE_ID = "aa:aa:aa:aa:aa:05"
 
 DEVICES: dict[str, dict[str, Any]] = {
     HOME_V3_ID: {
@@ -74,6 +75,24 @@ DEVICES: dict[str, dict[str, Any]] = {
         "bay1": {"code": "NDMH", "lowFragrance": False},
         "awayMode": {"away": False, "enabled": False},
     },
+    # No Luxe has been captured yet: this is based on the Pura app's data model
+    HOME_LUXE_ID: {
+        "deviceId": HOME_LUXE_ID,
+        "hwVersion": "40.1",
+        "model": 5,
+        "modelType": "luxe",
+        "displayName": {"name": "Home Luxe"},
+        "deviceLocation": {"timezone": "America/New_York"},
+        "connected": True,
+        "controller": "default",
+        "bay1": {"code": "NDMH", "lowFragrance": False},
+        "bay2": {"code": "WHTH", "lowFragrance": False},
+        "bay3": None,
+        "bay4": {"code": "CLMH", "lowFragrance": True},
+        "awayMode": {"away": False, "enabled": False},
+        "diffusionMode": "standard",
+        "capabilities": {"diffusionModes": ["standard", "oscillation-multi-bay"]},
+    },
 }
 
 
@@ -98,6 +117,17 @@ def mock_frontend(hass: HomeAssistant) -> Generator[MagicMock]:
 def devices() -> dict[str, dict[str, Any]]:
     """Return a copy of the device data returned by the API."""
     return copy.deepcopy(DEVICES)
+
+
+@pytest.fixture
+def luxe(devices: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Limit the account to a Home Luxe, with the data its entities need."""
+    device = devices[HOME_LUXE_ID]
+    device |= {"schedules": [], "timer": None}
+    for device_id in list(devices):
+        if device_id != HOME_LUXE_ID:
+            del devices[device_id]
+    return device
 
 
 @pytest.fixture
