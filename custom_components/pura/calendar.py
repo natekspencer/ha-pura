@@ -143,6 +143,8 @@ def _parse_start_end(
         end_dt = (start_dt.astimezone(dt_util.UTC) + time_duration).astimezone(tzinfo)
     elif end:
         end_dt = _parse_datetime(start_dt, end)
+        if end_dt < start_dt:
+            end_dt += ONE_DAY
     return {"start": start_dt, "end": end_dt}
 
 
