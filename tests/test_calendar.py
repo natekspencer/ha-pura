@@ -27,9 +27,16 @@ EVERY_DAY = dict.fromkeys(
         ({"start": "0800", "end": "1000"}, 2),
         ({"start": "2200", "end": "0600"}, 8),
         ({"start": "2200", "end": "0000"}, 2),
+        ({"start": "0800", "end": "0800"}, 0),
         ({"start": "2200", "duration": 120}, 2),
     ],
-    ids=["same_day_end", "overnight_end", "midnight_end", "overnight_duration"],
+    ids=[
+        "same_day_end",
+        "overnight_end",
+        "midnight_end",
+        "matching_end",
+        "overnight_duration",
+    ],
 )
 async def test_schedule_event_times(
     hass: HomeAssistant,
