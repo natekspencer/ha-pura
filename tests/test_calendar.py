@@ -22,6 +22,7 @@ EVERY_DAY = dict.fromkeys(
 # 03:00 in the device's timezone, and 23:00 the night before
 AFTER_MIDNIGHT = datetime(2026, 6, 16, 7, tzinfo=UTC)
 DISABLED_UNTIL = int((AFTER_MIDNIGHT - timedelta(hours=4)).timestamp())
+PREVIOUS_START = int((AFTER_MIDNIGHT - timedelta(hours=5)).timestamp())
 
 
 @pytest.mark.parametrize(
@@ -87,8 +88,17 @@ async def test_schedule_event_times(
         ({"start": "2200", "duration": 480}, True),
         ({"start": "2200", "end": "0200"}, False),
         ({"start": "2200", "end": "0600", "disableUntil": DISABLED_UNTIL}, False),
+        ({"start": "2200", "end": "0600", "disableUntil": PREVIOUS_START}, False),
+        ({"start": "2200", "end": "0600", "disableUntil": PREVIOUS_START - 1}, True),
     ],
-    ids=["end", "duration", "already_ended", "disabled"],
+    ids=[
+        "end",
+        "duration",
+        "already_ended",
+        "disabled",
+        "disabled_until_start",
+        "disabled_until_before_start",
+    ],
 )
 async def test_overnight_schedule_after_midnight(
     hass: HomeAssistant,
