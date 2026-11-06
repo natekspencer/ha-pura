@@ -28,3 +28,19 @@ async def test_luxe_without_nightlight(
     """Test a Luxe that doesn't report a nightlight gets no light."""
     await setup_integration(hass, [Platform.LIGHT])
     assert not hass.states.async_entity_ids("light")
+
+
+async def test_luxe_nightlight_reported_later(
+    hass: HomeAssistant, mock_pura: MagicMock, luxe: dict[str, Any]
+) -> None:
+    """Test a Luxe gets a light once it starts reporting a nightlight."""
+    entry = await setup_integration(hass, [Platform.LIGHT])
+    assert not hass.states.async_entity_ids("light")
+
+    luxe["deviceDefaults"] = {
+        "nightlight": {"active": True, "brightness": 5, "color": "ffffff"}
+    }
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("light.home_luxe_nightlight").state == "on"
