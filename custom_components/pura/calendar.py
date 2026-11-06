@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, tzinfo as dt_tzinfo
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -137,22 +137,26 @@ def _parse_start_end(
     tzinfo = ZoneInfo(tz) if tz else now.tzinfo
     now = now.astimezone(tzinfo)
     start_dt = _parse_datetime(now, start, disable_until=disable_until)
-    end_dt = start_dt
+    # The recurrence starts here, so keep yesterday's occurrence while it's running
+    previous_dt = start_dt - ONE_DAY
+    if _parse_end(previous_dt, tzinfo, duration, end) > now and (
+        not disable_until or previous_dt > datetime.fromtimestamp(disable_until, tzinfo)
+    ):
+        start_dt = previous_dt
+    return {"start": start_dt, "end": _parse_end(start_dt, tzinfo, duration, end)}
+
+
+def _parse_end(
+    start_dt: datetime, tzinfo: dt_tzinfo, duration: int | None, end: str | None
+) -> datetime:
+    """Parse the end datetime for a schedule starting at a datetime."""
     if duration:
         time_duration = timedelta(minutes=duration)
-        end_dt = (start_dt.astimezone(dt_util.UTC) + time_duration).astimezone(tzinfo)
-    elif end:
+        return (start_dt.astimezone(dt_util.UTC) + time_duration).astimezone(tzinfo)
+    if end:
         end_dt = _parse_datetime(start_dt, end)
-        if end_dt < start_dt:
-            end_dt += ONE_DAY
-    # The recurrence starts here, so keep yesterday's occurrence while it's running
-    if end_dt - ONE_DAY > now and (
-        not disable_until
-        or start_dt - ONE_DAY > datetime.fromtimestamp(disable_until, tzinfo)
-    ):
-        start_dt -= ONE_DAY
-        end_dt -= ONE_DAY
-    return {"start": start_dt, "end": end_dt}
+        return end_dt + ONE_DAY if end_dt < start_dt else end_dt
+    return start_dt
 
 
 def _parse_datetime(

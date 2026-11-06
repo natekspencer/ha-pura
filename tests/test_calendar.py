@@ -109,3 +109,34 @@ async def test_overnight_schedule_after_midnight(
     entity_id = hass.states.async_entity_ids("calendar")[0]
 
     assert hass.states.get(entity_id).state == ("on" if active else "off")
+
+
+async def test_overnight_schedule_across_daylight_saving(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    mock_pura: MagicMock,
+    luxe: dict[str, Any],
+) -> None:
+    """Test an overnight duration keeps its length when the clocks go forward."""
+    # 06:30 on the day clocks go forward, in the last hour of an 8 hour schedule
+    now = datetime(2026, 3, 8, 10, 30, tzinfo=UTC)
+    freezer.move_to(now)
+    luxe["schedules"] = [
+        {"id": "schedule", "name": "Test", "bay": 1, "intensity": 5}
+        | {"days": EVERY_DAY, "start": "2200", "duration": 480}
+    ]
+    await setup_integration(hass, [Platform.CALENDAR])
+    entity_id = hass.states.async_entity_ids("calendar")[0]
+
+    assert hass.states.get(entity_id).state == "on"
+
+    response = await hass.services.async_call(
+        "calendar",
+        "get_events",
+        {"start_date_time": now, "end_date_time": now + timedelta(minutes=1)},
+        target={"entity_id": entity_id},
+        blocking=True,
+        return_response=True,
+    )
+    event = response[entity_id]["events"][0]
+    assert dt_util.parse_datetime(event["end"]) == datetime(2026, 3, 8, 11, tzinfo=UTC)
