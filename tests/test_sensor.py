@@ -14,7 +14,7 @@ from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from . import MockConfigEntry
+from . import MockConfigEntry, setup_integration
 from .conftest import HOME_MINI_ID, HOME_V5_ID
 
 # TODO: Remove the migration tests along with _async_migrate_entities after April 2027
@@ -381,3 +381,45 @@ async def test_bay_fragrance_vial_picture(
     await config_entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("sensor.home_v5_active_fragrance").state == "White Tea"
+
+
+async def test_luxe_sensors(
+    hass: HomeAssistant, mock_pura: MagicMock, luxe: dict[str, Any]
+) -> None:
+    """Test the Luxe has sensors for all four slots, and follows its fourth bay."""
+    luxe["bay4"] |= {
+        "activeAt": 1700000000,
+        "fragrance": {"name": "Volcano", "vialUrl": "https://example.com/vial.png"},
+        "remaining": {"percent": 42},
+    }
+    await setup_integration(hass, [Platform.SENSOR])
+
+    assert hass.states.get("sensor.home_luxe_active_fragrance").state == "Volcano"
+    assert hass.states.get("sensor.home_luxe_slot_4_fragrance").state == "Volcano"
+    assert (
+        hass.states.get("sensor.home_luxe_slot_4_fragrance_remaining").state == "42.0"
+    )
+    assert hass.states.get("sensor.home_luxe_slot_3_fragrance").state == "unavailable"
+    assert hass.states.get("sensor.home_luxe_controller").state == "default"
+
+
+async def test_two_slot_devices_have_no_third_slot(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test the extra slots are only created for the Luxe."""
+    home = devices[HOME_V5_ID]
+    home |= {"controller": "default", "schedules": [], "timer": None}
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await setup_integration(hass, [Platform.SENSOR])
+
+    assert entity_registry.async_get_entity_id(
+        SENSOR_DOMAIN, DOMAIN, f"{HOME_V5_ID}-bay_2"
+    )
+    assert not entity_registry.async_get_entity_id(
+        SENSOR_DOMAIN, DOMAIN, f"{HOME_V5_ID}-bay_3"
+    )

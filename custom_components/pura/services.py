@@ -23,14 +23,16 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.service import async_extract_entity_ids
 
-from .const import ATTR_DURATION, ATTR_INTENSITY, ATTR_SLOT, DOMAIN
+from .const import ATTR_DURATION, ATTR_INTENSITY, ATTR_SLOT, BAYS, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
 
 SERVICE_START_TIMER = "start_timer"
 SERVICE_TIMER_SCHEMA = vol.All(
     cv.make_entity_service_schema(
         {
-            vol.Optional(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=2)),
+            vol.Optional(ATTR_SLOT): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=len(BAYS))
+            ),
             vol.Required(ATTR_INTENSITY): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=10)
             ),
@@ -99,23 +101,20 @@ def async_setup_services(hass: HomeAssistant) -> None:
                     translation_placeholders={"name": get_device_name(device)},
                 )
 
-            if not (fragrance_bays := [i for i in (1, 2) if has_fragrance(device, i)]):
+            if not (fragrance_bays := [i for i in BAYS if has_fragrance(device, i)]):
                 raise ServiceValidationError(
                     translation_domain=DOMAIN, translation_key="no_fragrances_installed"
                 )
 
             if not (slot := call.data.get(ATTR_SLOT)):
-                if len(fragrance_bays) == 1:
-                    slot = fragrance_bays[0]
-                else:
-                    slot1_remaining = get_fragrance_remaining(device, 1) or 0
-                    slot2_remaining = get_fragrance_remaining(device, 2) or 0
-                    if slot1_remaining > slot2_remaining:
-                        slot = 1
-                    elif slot2_remaining > slot1_remaining:
-                        slot = 2
-                    else:
-                        slot = 1 if runtime(device, 1) <= runtime(device, 2) else 2
+                # Most remaining first, then the least runtime, then the lowest slot
+                slot = min(
+                    fragrance_bays,
+                    key=lambda bay: (
+                        -(get_fragrance_remaining(device, bay) or 0),
+                        runtime(device, bay),
+                    ),
+                )
             elif slot not in fragrance_bays:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,

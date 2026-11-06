@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from . import MockConfigEntry, setup_integration
-from .conftest import CAR_PRO_ID, HOME_MINI_ID, HOME_V3_ID, HOME_V5_ID
+from .conftest import CAR_PRO_ID, HOME_LUXE_ID, HOME_MINI_ID, HOME_V3_ID, HOME_V5_ID
 
 
 @pytest.fixture
@@ -112,3 +112,24 @@ async def test_low_fragrance_updates(
     assert _state(hass, entity_registry, HOME_V3_ID, "bay_2_low_fragrance") == (
         STATE_OFF
     )
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("bay_1_low_fragrance", "off"),
+        ("bay_2_low_fragrance", "off"),
+        ("bay_3_low_fragrance", "unavailable"),
+        ("bay_4_low_fragrance", "on"),
+        ("connected", "on"),
+    ],
+)
+async def test_luxe_binary_sensors(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    init_integration: MockConfigEntry,
+    key: str,
+    expected: str,
+) -> None:
+    """Test the Luxe has a low fragrance sensor for each of its four slots."""
+    assert _state(hass, entity_registry, HOME_LUXE_ID, key) == expected

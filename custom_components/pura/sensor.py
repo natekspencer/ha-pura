@@ -61,6 +61,51 @@ class PuraSensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[dict], Any | None]
 
 
+def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
+    """Return the sensors for a bay on a multi-bay device."""
+    return (
+        PuraSensorEntityDescription(
+            key=f"bay_{bay}",
+            translation_key=f"bay_{bay}_fragrance",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda data: get_fragrance_attributes(data, bay),
+            available_fn=lambda data: has_fragrance(data, bay),
+            picture_fn=lambda data: get_fragrance_vial_url(data, bay),
+            value_fn=lambda data: get_fragrance_name(data, bay),
+        ),
+        PuraSensorEntityDescription(
+            key=f"bay_{bay}_fragrance_remaining",
+            translation_key=f"bay_{bay}_fragrance_remaining",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=0,
+            available_fn=lambda data: has_fragrance(data, bay),
+            value_fn=lambda data: get_fragrance_remaining(data, bay),
+        ),
+        PuraSensorEntityDescription(
+            key=f"bay_{bay}_runtime",
+            translation_key=f"bay_{bay}_runtime",
+            device_class=SensorDeviceClass.DURATION,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            native_unit_of_measurement=UnitOfTime.SECONDS,
+            state_class=SensorStateClass.TOTAL_INCREASING,
+            suggested_unit_of_measurement=UnitOfTime.HOURS,
+            available_fn=lambda data: has_fragrance(data, bay),
+            value_fn=lambda data: get_fragrance_runtime(data, bay),
+        ),
+        PuraSensorEntityDescription(
+            key=f"bay_{bay}_installed",
+            translation_key=f"bay_{bay}_installed",
+            device_class=SensorDeviceClass.TIMESTAMP,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            available_fn=lambda data: has_fragrance(data, bay),
+            value_fn=lambda data: datetime.fromtimestamp(data[f"bay{bay}"]["id"], UTC),
+        ),
+    )
+
+
 SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
     ("car",): (
         PuraSensorEntityDescription(
@@ -111,7 +156,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             value_fn=lambda data: data["bay1"]["wearingTime"],
         ),
     ),
-    ("wall", "plus"): (
+    ("wall", "plus", "luxe"): (
         PuraSensorEntityDescription(
             key="active_fragrance",
             translation_key="active_fragrance",
@@ -121,86 +166,11 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
                 else "none"
             ),
         ),
-        PuraSensorEntityDescription(
-            key="bay_1",
-            translation_key="bay_1_fragrance",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            attributes_fn=lambda data: get_fragrance_attributes(data, 1),
-            available_fn=lambda data: has_fragrance(data, 1),
-            picture_fn=lambda data: get_fragrance_vial_url(data, 1),
-            value_fn=lambda data: get_fragrance_name(data, 1),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_1_fragrance_remaining",
-            translation_key="bay_1_fragrance_remaining",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            native_unit_of_measurement=PERCENTAGE,
-            state_class=SensorStateClass.MEASUREMENT,
-            suggested_display_precision=0,
-            available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: get_fragrance_remaining(data, 1),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_1_runtime",
-            translation_key="bay_1_runtime",
-            device_class=SensorDeviceClass.DURATION,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            native_unit_of_measurement=UnitOfTime.SECONDS,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            suggested_unit_of_measurement=UnitOfTime.HOURS,
-            available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: get_fragrance_runtime(data, 1),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_1_installed",
-            translation_key="bay_1_installed",
-            device_class=SensorDeviceClass.TIMESTAMP,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            entity_registry_enabled_default=False,
-            available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: datetime.fromtimestamp(data["bay1"]["id"], UTC),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_2",
-            translation_key="bay_2_fragrance",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            attributes_fn=lambda data: get_fragrance_attributes(data, 2),
-            available_fn=lambda data: has_fragrance(data, 2),
-            picture_fn=lambda data: get_fragrance_vial_url(data, 2),
-            value_fn=lambda data: get_fragrance_name(data, 2),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_2_fragrance_remaining",
-            translation_key="bay_2_fragrance_remaining",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            native_unit_of_measurement=PERCENTAGE,
-            state_class=SensorStateClass.MEASUREMENT,
-            suggested_display_precision=0,
-            available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: get_fragrance_remaining(data, 2),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_2_runtime",
-            translation_key="bay_2_runtime",
-            device_class=SensorDeviceClass.DURATION,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            native_unit_of_measurement=UnitOfTime.SECONDS,
-            state_class=SensorStateClass.TOTAL_INCREASING,
-            suggested_unit_of_measurement=UnitOfTime.HOURS,
-            available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: get_fragrance_runtime(data, 2),
-        ),
-        PuraSensorEntityDescription(
-            key="bay_2_installed",
-            translation_key="bay_2_installed",
-            device_class=SensorDeviceClass.TIMESTAMP,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            entity_registry_enabled_default=False,
-            available_fn=lambda data: has_fragrance(data, 2),
-            value_fn=lambda data: datetime.fromtimestamp(data["bay2"]["id"], UTC),
-        ),
+        *_bay_sensors(1),
+        *_bay_sensors(2),
     ),
-    ("wall", "plus", "mini"): (
+    ("luxe",): (*_bay_sensors(3), *_bay_sensors(4)),
+    ("wall", "plus", "mini", "luxe"): (
         PuraSensorEntityDescription(
             key="controller",
             translation_key="controller",

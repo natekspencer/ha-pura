@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
+from .const import BAYS
 from .entity import PuraEntity
 
 
@@ -37,6 +38,17 @@ class PuraBinarySensorEntityDescription(BinarySensorEntityDescription):
     on_fn: Callable[[dict], Any]
 
 
+def _bay_low_fragrance(bay: int) -> PuraBinarySensorEntityDescription:
+    """Return the low fragrance sensor for a bay on a multi-bay device."""
+    return PuraBinarySensorEntityDescription(
+        key=f"bay_{bay}_low_fragrance",
+        translation_key=f"bay_{bay}_low_fragrance",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        available_fn=lambda data: has_fragrance(data, bay),
+        on_fn=lambda data: is_low_fragrance(data, bay),
+    )
+
+
 SENSORS: dict[tuple[str, ...], tuple[PuraBinarySensorEntityDescription, ...]] = {
     ("car", "mini"): (  # single fragrance
         PuraBinarySensorEntityDescription(
@@ -47,23 +59,9 @@ SENSORS: dict[tuple[str, ...], tuple[PuraBinarySensorEntityDescription, ...]] = 
             on_fn=lambda data: is_low_fragrance(data, 1),
         ),
     ),
-    ("wall", "plus"): (  # dual fragrance
-        PuraBinarySensorEntityDescription(
-            key="bay_1_low_fragrance",
-            translation_key="bay_1_low_fragrance",
-            device_class=BinarySensorDeviceClass.PROBLEM,
-            available_fn=lambda data: has_fragrance(data, 1),
-            on_fn=lambda data: is_low_fragrance(data, 1),
-        ),
-        PuraBinarySensorEntityDescription(
-            key="bay_2_low_fragrance",
-            translation_key="bay_2_low_fragrance",
-            device_class=BinarySensorDeviceClass.PROBLEM,
-            available_fn=lambda data: has_fragrance(data, 2),
-            on_fn=lambda data: is_low_fragrance(data, 2),
-        ),
-    ),
-    ("wall", "plus", "mini"): (
+    ("wall", "plus"): tuple(_bay_low_fragrance(bay) for bay in (1, 2)),
+    ("luxe",): tuple(_bay_low_fragrance(bay) for bay in BAYS),
+    ("wall", "plus", "mini", "luxe"): (
         PuraBinarySensorEntityDescription(
             key="connected",
             translation_key="connected",

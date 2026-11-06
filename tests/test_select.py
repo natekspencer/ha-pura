@@ -15,7 +15,7 @@ from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import HomeAssistant
 
 from . import setup_integration
-from .conftest import HOME_V5_ID
+from .conftest import HOME_LUXE_ID, HOME_V5_ID
 
 ENTITY_ID = "select.home_v5_fragrance"
 INTENSITY_ENTITY_ID = "select.home_v5_intensity"
@@ -243,4 +243,53 @@ async def test_intensity_standard_timer(
     )
     mock_pura.set_intensity.assert_called_once_with(
         HOME_V5_ID, bay=1, controller="timer", intensity=10
+    )
+
+
+async def test_luxe_lists_installed_slots(
+    hass: HomeAssistant, mock_pura: MagicMock, luxe: dict[str, Any]
+) -> None:
+    """Test the Luxe offers each installed slot, skipping empty ones."""
+    await setup_integration(hass, [Platform.SELECT])
+    assert hass.states.get("select.home_luxe_fragrance").attributes["options"] == [
+        "off",
+        "slot_1",
+        "slot_2",
+        "slot_4",
+    ]
+
+
+async def test_luxe_starts_fourth_slot(
+    hass: HomeAssistant, mock_pura: MagicMock, luxe: dict[str, Any]
+) -> None:
+    """Test selecting a Luxe slot above the first two starts that bay."""
+    await setup_integration(hass, [Platform.SELECT])
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: "select.home_luxe_fragrance", ATTR_OPTION: "slot_4"},
+        blocking=True,
+    )
+    mock_pura.set_always_on.assert_called_once_with(HOME_LUXE_ID, bay=4)
+
+
+async def test_luxe_intensity_targets_active_bay(
+    hass: HomeAssistant, mock_pura: MagicMock, luxe: dict[str, Any]
+) -> None:
+    """Test the intensity select reads and changes a Luxe's fourth bay."""
+    luxe["bay4"]["activeAt"] = ACTIVE_AT
+    luxe["deviceDefaults"] = {"bay4Intensity": 7}
+    await setup_integration(hass, [Platform.SELECT])
+
+    assert hass.states.get("select.home_luxe_fragrance").state == "slot_4"
+    assert hass.states.get("select.home_luxe_intensity").state == "strong"
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: "select.home_luxe_intensity", ATTR_OPTION: "subtle"},
+        blocking=True,
+    )
+    mock_pura.set_intensity.assert_called_once_with(
+        HOME_LUXE_ID, bay=4, controller="default", intensity=3
     )

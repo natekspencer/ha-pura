@@ -16,7 +16,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import PuraConfigEntry
-from .const import DOMAIN
+from .const import BAYS, DOMAIN
 from .entity import PuraEntity, get_active_bay
 
 
@@ -59,7 +59,7 @@ class PuraSelectEntityDescription(SelectEntityDescription):
 
 
 SELECT_DESCRIPTIONS = {
-    ("wall", "plus", "mini"): (
+    ("wall", "plus", "mini", "luxe"): (
         PuraSelectEntityDescription(
             key="fragrance",
             translation_key="fragrance",
@@ -67,7 +67,7 @@ SELECT_DESCRIPTIONS = {
                 f"slot_{bay}" if (bay := select._current_bay) else "off"
             ),
             options_fn=lambda data: (
-                ["off"] + [f"slot_{i}" for i in (1, 2) if has_fragrance(data, i)]
+                ["off"] + [f"slot_{i}" for i in BAYS if has_fragrance(data, i)]
             ),
             select_fn=lambda select, option: functools.partial(
                 select.coordinator.api.set_always_on,

@@ -5,6 +5,8 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+from pypura.utils import dig
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_RGB_COLOR,
@@ -31,10 +33,25 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     added_devices: set[tuple[str, str]] = set()
 
+    def _has_nightlight(device_id: str, device_type: str) -> bool:
+        """Return whether a device has a nightlight."""
+        if device_type == "luxe":
+            # The Luxe isn't confirmed to have one, so rely on what it reports
+            device = coordinator.get_device(device_type, device_id)
+            return bool(dig(device, "deviceDefaults.nightlight"))
+        return device_type in ("wall", "mini")
+
     def _check_devices() -> None:
         nonlocal added_devices
         current_devices = coordinator.current_devices_with_type
-        if new_devices := current_devices - added_devices:
+        # Only lights that were created are tracked, so a device that starts
+        # reporting a nightlight later is picked up
+        new_devices = {
+            device
+            for device in current_devices - added_devices
+            if _has_nightlight(*device)
+        }
+        if new_devices:
             async_add_entities(
                 PuraLightEntity(
                     coordinator=coordinator,
@@ -43,9 +60,8 @@ async def async_setup_entry(
                     device_id=device_id,
                 )
                 for device_id, device_type in new_devices
-                if device_type in ("wall", "mini")
             )
-        added_devices = current_devices
+        added_devices = (added_devices & current_devices) | new_devices
 
     _check_devices()
     entry.async_on_unload(coordinator.async_add_listener(_check_devices))
