@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -19,6 +19,9 @@ EVERY_DAY = dict.fromkeys(
     ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"),
     True,
 )
+# 03:00 in the device's timezone, and 23:00 the night before
+AFTER_MIDNIGHT = datetime(2026, 6, 16, 7, tzinfo=UTC)
+DISABLED_UNTIL = int((AFTER_MIDNIGHT - timedelta(hours=4)).timestamp())
 
 
 @pytest.mark.parametrize(
@@ -75,3 +78,34 @@ async def test_schedule_event_times(
         start = dt_util.parse_datetime(event["start"])
         end = dt_util.parse_datetime(event["end"])
         assert end - start == timedelta(hours=hours)
+
+
+@pytest.mark.parametrize(
+    ("schedule", "active"),
+    [
+        ({"start": "2200", "end": "0600"}, True),
+        ({"start": "2200", "duration": 480}, True),
+        ({"start": "2200", "end": "0200"}, False),
+        ({"start": "2200", "end": "0600", "disableUntil": DISABLED_UNTIL}, False),
+    ],
+    ids=["end", "duration", "already_ended", "disabled"],
+)
+async def test_overnight_schedule_after_midnight(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    mock_pura: MagicMock,
+    luxe: dict[str, Any],
+    schedule: dict[str, Any],
+    active: bool,
+) -> None:
+    """Test an overnight schedule stays active past midnight unless it's over."""
+    freezer.move_to(AFTER_MIDNIGHT)
+    luxe["schedules"] = [
+        {"id": "schedule", "name": "Test", "bay": 1, "intensity": 5}
+        | {"days": EVERY_DAY}
+        | schedule
+    ]
+    await setup_integration(hass, [Platform.CALENDAR])
+    entity_id = hass.states.async_entity_ids("calendar")[0]
+
+    assert hass.states.get(entity_id).state == ("on" if active else "off")

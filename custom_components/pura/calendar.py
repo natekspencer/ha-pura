@@ -145,6 +145,13 @@ def _parse_start_end(
         end_dt = _parse_datetime(start_dt, end)
         if end_dt < start_dt:
             end_dt += ONE_DAY
+    # The recurrence starts here, so keep yesterday's occurrence while it's running
+    if end_dt - ONE_DAY > now and (
+        not disable_until
+        or start_dt - ONE_DAY > datetime.fromtimestamp(disable_until, tzinfo)
+    ):
+        start_dt -= ONE_DAY
+        end_dt -= ONE_DAY
     return {"start": start_dt, "end": end_dt}
 
 
