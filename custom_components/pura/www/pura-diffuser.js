@@ -154,12 +154,15 @@ const useAmPm = (locale) => {
   if (format === "12") return true;
   if (format === "24") return false;
   const language = format === "system" ? undefined : locale?.language;
+  const resolve = (lang) => new Intl.DateTimeFormat(lang, { hour: "numeric" }).resolvedOptions();
+  let options;
   try {
-    // 22:00 shows as "10 PM" (or similar) in locales that use a 12-hour clock
-    return new Date(2023, 0, 1, 22).toLocaleString(language).includes("10");
+    options = resolve(language);
   } catch {
-    return new Date(2023, 0, 1, 22).toLocaleString().includes("10");
+    options = resolve(undefined);
   }
+  // Read the locale's clock rather than its output, which may not use ASCII digits
+  return options.hourCycle ? ["h11", "h12"].includes(options.hourCycle) : !!options.hour12;
 };
 
 /** Format a time of day like Home Assistant does, honoring the user's locale settings. */
@@ -258,24 +261,12 @@ class PuraDiffuserCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._render();
+    // A timer that started, stopped or changed may end before the pending tick
+    if (this.isConnected && !Object.is(this._timerEnd(), this._tickEnd)) this._scheduleTick();
   }
 
   connectedCallback() {
-    // Redraw the timer countdown even when no state changes arrive. The render key
-    // includes the clock minute while a timer runs, so ticking just after each minute
-    // (and when the timer ends) only repaints when the countdown changes.
-    const schedule = () => {
-      const now = Date.now();
-      const end = this._timerEnd();
-      const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
-      const next = end > now ? Math.min(nextMinute, end) : nextMinute;
-      this._tick = setTimeout(() => {
-        this._render();
-        schedule();
-      }, next - now + 50);
-    };
-    clearTimeout(this._tick);
-    schedule();
+    this._scheduleTick();
     // Timers are throttled in background tabs, so catch up when the page is shown again.
     this._onVisible = () => document.visibilityState === "visible" && this._render();
     document.addEventListener("visibilitychange", this._onVisible);
@@ -284,6 +275,24 @@ class PuraDiffuserCard extends HTMLElement {
   disconnectedCallback() {
     clearTimeout(this._tick);
     document.removeEventListener("visibilitychange", this._onVisible);
+  }
+
+  /**
+   * Redraw the timer countdown even when no state changes arrive. The render key
+   * includes the clock minute while a timer runs, so ticking just after each minute
+   * (and when the timer ends) only repaints when the countdown changes.
+   */
+  _scheduleTick() {
+    clearTimeout(this._tick);
+    const now = Date.now();
+    const end = this._timerEnd();
+    const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
+    const next = end > now ? Math.min(nextMinute, end) : nextMinute;
+    this._tickEnd = end;
+    this._tick = setTimeout(() => {
+      this._render();
+      this._scheduleTick();
+    }, next - now + 50);
   }
 
   /** When the running timer ends, in milliseconds, or NaN without one. */
