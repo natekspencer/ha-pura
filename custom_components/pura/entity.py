@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pypura.utils import dig, get_device_name, get_model_name
+from pypura.utils import dig, get_device_name, get_fragrance_runtime, get_model_name
 
 from homeassistant.helpers.device_registry import (
     CONNECTION_BLUETOOTH,
@@ -20,9 +20,45 @@ from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordi
 UPDATE_INTERVAL = 30
 
 
+def has_stale_timer(device: dict[str, Any]) -> bool:
+    """Check if the device reports a timer that is no longer running.
+
+    When a timer ends, the API can leave `controller` set to "timer" and the bay's
+    `activeAt` set even though `timer` is cleared, so the device looks like it is
+    still diffusing. Auto-alternate keeps the same controller with no `timer` while
+    it runs, but tracks the run in `oscillation.state`.
+    """
+    return (
+        device.get("controller") == "timer"
+        and not device.get("timer")
+        and not dig(device, "oscillation.state")
+    )
+
+
+def get_controller(device: dict[str, Any]) -> str:
+    """Get what is controlling the device.
+
+    The API reports "timer" without any timer details both after a timer ends and
+    while auto-alternate runs with no timer set, and the Pura app shows neither as
+    a timer.
+    """
+    if (controller := device["controller"]) == "timer" and not device.get("timer"):
+        return "default"
+    return str(controller)
+
+
 def get_active_bay(device: dict[str, Any]) -> int | None:
     """Get the bay that is currently diffusing, if any."""
+    if has_stale_timer(device):
+        return None
     return next((i for i in BAYS if dig(device, f"bay{i}.activeAt")), None)
+
+
+def get_runtime(device: dict[str, Any], bay: int) -> int:
+    """Get a bay's fragrance runtime in seconds, ignoring a timer that has ended."""
+    if has_stale_timer(device):
+        return dig(device, f"bay{bay}.wearingTime") or 0
+    return get_fragrance_runtime(device, bay)
 
 
 class PuraEntity(
@@ -80,10 +116,10 @@ class PuraEntity(
     def _intensity_data(self) -> dict:
         """Get the intensity data."""
         device = self.get_device()
-        controller = device["controller"]
+        controller = get_controller(device)
         bay = get_active_bay(device) or 0
         intensity = dig(device, f"deviceDefaults.bay{bay}Intensity") if bay else None
-        data = {"bay": bay, "controller": str(controller), "intensity": intensity}
+        data = {"bay": bay, "controller": controller, "intensity": intensity}
         if controller == "timer" and device[controller]:
             data = device[controller] | {"controller": controller}
         elif controller != "default":

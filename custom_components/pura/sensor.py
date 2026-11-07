@@ -8,13 +8,7 @@ from datetime import datetime
 import re
 from typing import Any
 
-from pypura.utils import (
-    dig,
-    get_fragrance_name,
-    get_fragrance_remaining,
-    get_fragrance_runtime,
-    has_fragrance,
-)
+from pypura.utils import dig, get_fragrance_name, get_fragrance_remaining, has_fragrance
 
 from homeassistant.components.sensor import (
     DOMAIN as SENSOR_DOMAIN,
@@ -33,7 +27,7 @@ from homeassistant.util.dt import UTC, utc_from_timestamp
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .entity import PuraEntity, get_active_bay
+from .entity import PuraEntity, get_active_bay, get_controller, get_runtime
 
 HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 
@@ -92,7 +86,7 @@ def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
             state_class=SensorStateClass.TOTAL_INCREASING,
             suggested_unit_of_measurement=UnitOfTime.HOURS,
             available_fn=lambda data: has_fragrance(data, bay),
-            value_fn=lambda data: get_fragrance_runtime(data, bay),
+            value_fn=lambda data: get_runtime(data, bay),
         ),
         PuraSensorEntityDescription(
             key=f"bay_{bay}_installed",
@@ -177,7 +171,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             value_fn=lambda data: (
                 "schedule"
-                if (controller := data["controller"]) not in ("default", "timer")
+                if (controller := get_controller(data)) not in ("default", "timer")
                 and controller in {s.get("id") for s in data.get("schedules") or []}
                 else controller
             ),

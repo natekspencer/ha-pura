@@ -423,3 +423,62 @@ async def test_two_slot_devices_have_no_third_slot(
     assert not entity_registry.async_get_entity_id(
         SENSOR_DOMAIN, DOMAIN, f"{HOME_V5_ID}-bay_3"
     )
+
+
+async def test_ended_timer_is_not_active(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test a timer the API left behind after it ended is not shown as diffusing."""
+    home = devices[HOME_V5_ID]
+    # How the API reports a device after its timer ends
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": None,
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": 1700000000,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "none"
+    assert hass.states.get("sensor.home_v5_controller").state == "default"
+    # The runtime stops counting from when the bay was activated
+    assert float(hass.states.get("sensor.home_v5_slot_1_runtime").state) == 1.0
+
+    # Auto-alternate running without a timer is tracked in the oscillation state,
+    # which still reports the timer as its controller
+    home |= {
+        "diffusionMode": "oscillation-multi-bay",
+        "oscillation": {"state": {"controllingFeature": "timer", "currentIndex": 0}},
+    }
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
+    assert hass.states.get("sensor.home_v5_controller").state == "default"
+    assert hass.states.get("sensor.home_v5_timer").state == "unknown"
+
+    # A timer without auto-alternate is running while it has its own details
+    home |= {
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "timer": {"bay": 1, "intensity": 5, "start": 1700000000, "end": 1700003600},
+    }
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
+    assert hass.states.get("sensor.home_v5_controller").state == "timer"
