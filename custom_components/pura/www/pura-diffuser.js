@@ -178,6 +178,8 @@ const formatTime = (date, hass) => {
   try {
     return new Intl.DateTimeFormat(language, options).format(date);
   } catch {
+    // The browser may not know the language or the server's time zone
+    delete options.timeZone;
     return new Intl.DateTimeFormat(undefined, options).format(date);
   }
 };
@@ -472,12 +474,14 @@ class PuraDiffuserCard extends HTMLElement {
       !!this._hass.user?.is_admin,
       [
         this._hass.locale?.language, this._hass.locale?.time_format, this._hass.locale?.time_zone,
-        this._hass.config?.time_zone,
+        this._hass.config?.time_zone, Intl.DateTimeFormat().resolvedOptions().timeZone,
       ],
       // the countdown, which changes with the clock rather than with any state
       this._timerEnd() > Date.now() ? Math.floor(Date.now() / MINUTE) : null,
       [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
       e, // which entity fills each role, so swapping one for another rerenders
+      // the runtimes as shown, since Home Assistant can swap its number formatter later
+      Object.values(e.bays).map((b) => this._formatState(this._state(b.runtime))),
       ids.map((id) => {
         const s = this._hass.states[id];
         return s && [
