@@ -9,12 +9,15 @@ from unittest.mock import MagicMock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
+from pytest_homeassistant_custom_component.common import (
+    mock_restore_cache_with_extra_data,
+)
 
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.sensor import _async_migrate_entities
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from . import MockConfigEntry, setup_integration
@@ -539,9 +542,14 @@ async def test_runtime_holds_when_timer_ends(
     await refresh()
     assert runtime() == 3
 
-    # Then the stored runtime catches up
+    # The bay can also stop before its stored runtime catches up
     home["controller"] = "default"
-    home["bay1"] |= {"activeAt": 0, "wearingTime": 10800}
+    home["bay1"]["activeAt"] = 0
+    await refresh()
+    assert runtime() == 3
+
+    # Then the stored runtime catches up
+    home["bay1"]["wearingTime"] = 10800
     await refresh()
     assert runtime() == 3
 
@@ -550,3 +558,42 @@ async def test_runtime_holds_when_timer_ends(
     home["bay1"] |= {"id": 1800000000, "activeAt": now, "wearingTime": 0}
     await refresh()
     assert runtime() == 0
+
+
+@pytest.mark.parametrize(
+    ("extra_data", "expected"),
+    [
+        ({"vial": 1700000000, "runtime": 10800}, 3),
+        # A different vial starts over
+        ({"vial": 1600000000, "runtime": 10800}, 1),
+        # Nothing was kept before the runtime was held
+        (None, 1),
+    ],
+)
+async def test_runtime_restores_held_value(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    extra_data: dict[str, Any] | None,
+    expected: float,
+) -> None:
+    """Test the runtime held for a vial survives a restart."""
+    entity_id = "sensor.home_v5_slot_1_runtime"
+    if extra_data:
+        mock_restore_cache_with_extra_data(hass, [(State(entity_id, "3"), extra_data)])
+    home = devices[HOME_V5_ID]
+    home |= {"controller": "default", "schedules": [], "timer": None}
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": 0,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+
+    assert float(hass.states.get(entity_id).state) == expected
