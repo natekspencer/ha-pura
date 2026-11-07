@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 
 from custom_components.pura.const import DOMAIN
@@ -490,20 +492,24 @@ async def test_runtime_holds_when_timer_ends(
     config_entry: MockConfigEntry,
     mock_pura: MagicMock,
     devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
 ) -> None:
-    """Test the runtime doesn't drop when a timer is cleared before the runtime is."""
+    """Test the runtime stops at a timer's end and doesn't drop when it's cleared."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
     home = devices[HOME_V5_ID]
+    # A two hour timer that started an hour ago, on a vial that had run for an hour
     home |= {
         "controller": "timer",
         "diffusionMode": "standard",
         "oscillation": None,
         "schedules": [],
-        "timer": {"bay": 1, "intensity": 5},
+        "timer": {"bay": 1, "intensity": 5, "start": now - 3600, "end": now + 3600},
         "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
     }
     home["bay1"] |= {
         "id": 1700000000,
-        "activeAt": int(time.time()) - 3600,
+        "activeAt": now - 3600,
         "wearingTime": 3600,
         "fragrance": {"name": "Volcano"},
         "remaining": {"percent": 90},
@@ -521,21 +527,26 @@ async def test_runtime_holds_when_timer_ends(
         await coordinator.async_refresh()
         await hass.async_block_till_done()
 
-    assert runtime() == pytest.approx(2, abs=0.01)
+    assert runtime() == 2
+
+    # A timer still reported after it ends stops counting at its end
+    freezer.tick(timedelta(hours=1, minutes=30))
+    await refresh()
+    assert runtime() == 3
 
     # The timer is cleared first, leaving the runtime from before it started
     home["timer"] = None
     await refresh()
-    assert runtime() == pytest.approx(2, abs=0.01)
+    assert runtime() == 3
 
     # Then the stored runtime catches up
     home["controller"] = "default"
-    home["bay1"] |= {"activeAt": 0, "wearingTime": 7200}
+    home["bay1"] |= {"activeAt": 0, "wearingTime": 10800}
     await refresh()
-    assert runtime() == 2
+    assert runtime() == 3
 
     # A new vial still starts its runtime over
     home |= {"controller": "timer", "timer": None}
-    home["bay1"] |= {"id": 1800000000, "activeAt": 1800000000, "wearingTime": 0}
+    home["bay1"] |= {"id": 1800000000, "activeAt": now, "wearingTime": 0}
     await refresh()
     assert runtime() == 0

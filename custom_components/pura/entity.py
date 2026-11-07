@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from pypura.utils import dig, get_device_name, get_fragrance_runtime, get_model_name
@@ -56,8 +57,18 @@ def get_active_bay(device: dict[str, Any]) -> int | None:
 
 def get_runtime(device: dict[str, Any], bay: int) -> int:
     """Get a bay's fragrance runtime in seconds, ignoring a timer that has ended."""
+    wearing_time: int = dig(device, f"bay{bay}.wearingTime") or 0
     if has_stale_timer(device):
-        return dig(device, f"bay{bay}.wearingTime") or 0
+        return wearing_time
+    # A timer can still be reported after it ends, so stop counting at its end
+    if (
+        device.get("controller") == "timer"
+        and (end := dig(device, "timer.end"))
+        and (active_at := dig(device, f"bay{bay}.activeAt"))
+        and not device.get("lastConnectedAt")
+        and time.time() > end
+    ):
+        return wearing_time + max(0, int(end - active_at))
     return get_fragrance_runtime(device, bay)
 
 
