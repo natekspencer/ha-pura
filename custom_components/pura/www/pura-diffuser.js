@@ -470,7 +470,10 @@ class PuraDiffuserCard extends HTMLElement {
       config,
       !!this._hass.themes?.darkMode,
       !!this._hass.user?.is_admin,
-      [this._hass.locale?.language, this._hass.locale?.time_format, this._hass.locale?.time_zone],
+      [
+        this._hass.locale?.language, this._hass.locale?.time_format, this._hass.locale?.time_zone,
+        this._hass.config?.time_zone,
+      ],
       // the countdown, which changes with the clock rather than with any state
       this._timerEnd() > Date.now() ? Math.floor(Date.now() / MINUTE) : null,
       [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
