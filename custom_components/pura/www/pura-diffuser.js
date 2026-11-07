@@ -175,13 +175,23 @@ const formatTime = (date, hass) => {
   }
   // English only uses a 24-hour clock when asked for one explicitly
   const language = locale?.language === "en" && !amPm ? "en-u-hc-h23" : locale?.language;
-  try {
-    return new Intl.DateTimeFormat(language, options).format(date);
-  } catch {
-    // The browser may not know the language or the server's time zone
-    delete options.timeZone;
-    return new Intl.DateTimeFormat(undefined, options).format(date);
+  // The browser may not know the language or the server's time zone. Try without the
+  // language first, then in the browser's time zone, which is labeled so it isn't
+  // mistaken for the server's.
+  const { timeZone, ...browserZone } = options;
+  const attempts = [[language, options], [undefined, options]];
+  if (timeZone) {
+    browserZone.timeZoneName = "short";
+    attempts.push([language, browserZone], [undefined, browserZone]);
   }
+  for (const [lang, opts] of attempts) {
+    try {
+      return new Intl.DateTimeFormat(lang, opts).format(date);
+    } catch {
+      // try the next fallback
+    }
+  }
+  return date.toLocaleTimeString();
 };
 
 /**
