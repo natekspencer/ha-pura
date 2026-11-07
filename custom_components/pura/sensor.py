@@ -27,7 +27,13 @@ from homeassistant.util.dt import UTC, utc_from_timestamp
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .entity import PuraEntity, get_active_bay, get_controller, get_runtime
+from .entity import (
+    PuraEntity,
+    get_active_bay,
+    get_controller,
+    get_runtime,
+    has_stale_timer,
+)
 
 HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 
@@ -53,6 +59,8 @@ class PuraSensorEntityDescription(SensorEntityDescription):
     available_fn: Callable[[dict], bool] | None = None
     picture_fn: Callable[[dict], str | None] | None = None
     value_fn: Callable[[dict], Any | None]
+    # Identifies the vial a runtime belongs to, so it can be held across a timer ending
+    vial_fn: Callable[[dict], Any] | None = None
 
 
 def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
@@ -87,6 +95,7 @@ def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
             suggested_unit_of_measurement=UnitOfTime.HOURS,
             available_fn=lambda data: has_fragrance(data, bay),
             value_fn=lambda data: get_runtime(data, bay),
+            vial_fn=lambda data: dig(data, f"bay{bay}.id"),
         ),
         PuraSensorEntityDescription(
             key=f"bay_{bay}_installed",
@@ -305,6 +314,7 @@ class PuraSensorEntity(PuraEntity, SensorEntity):
     """Pura sensor entity."""
 
     entity_description: PuraSensorEntityDescription
+    _runtime: tuple[Any, int] | None = None
 
     @property
     def available(self) -> bool:
@@ -330,4 +340,20 @@ class PuraSensorEntity(PuraEntity, SensorEntity):
     @property
     def native_value(self) -> str | int | datetime | None:
         """Return the value reported by the sensor."""
-        return self.entity_description.value_fn(self.get_device())
+        device = self.get_device()
+        value = self.entity_description.value_fn(device)
+        if not (vial_fn := self.entity_description.vial_fn):
+            return value
+        # A timer can be cleared before the bay's stored runtime catches up, which
+        # would make the runtime drop and look like a reset to the statistics. Keep
+        # the runtime reached so far for the same vial until the update arrives.
+        vial = vial_fn(device)
+        if (
+            has_stale_timer(device)
+            and self._runtime
+            and self._runtime[0] == vial
+            and value < self._runtime[1]
+        ):
+            value = self._runtime[1]
+        self._runtime = (vial, value)
+        return value

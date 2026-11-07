@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -482,3 +483,59 @@ async def test_ended_timer_is_not_active(
     await hass.async_block_till_done()
     assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
     assert hass.states.get("sensor.home_v5_controller").state == "timer"
+
+
+async def test_runtime_holds_when_timer_ends(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test the runtime doesn't drop when a timer is cleared before the runtime is."""
+    home = devices[HOME_V5_ID]
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": {"bay": 1, "intensity": 5},
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": int(time.time()) - 3600,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+
+    def runtime() -> float:
+        return float(hass.states.get("sensor.home_v5_slot_1_runtime").state)
+
+    async def refresh() -> None:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert runtime() == pytest.approx(2, abs=0.01)
+
+    # The timer is cleared first, leaving the runtime from before it started
+    home["timer"] = None
+    await refresh()
+    assert runtime() == pytest.approx(2, abs=0.01)
+
+    # Then the stored runtime catches up
+    home["controller"] = "default"
+    home["bay1"] |= {"activeAt": 0, "wearingTime": 7200}
+    await refresh()
+    assert runtime() == 2
+
+    # A new vial still starts its runtime over
+    home |= {"controller": "timer", "timer": None}
+    home["bay1"] |= {"id": 1800000000, "activeAt": 1800000000, "wearingTime": 0}
+    await refresh()
+    assert runtime() == 0
