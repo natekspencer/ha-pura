@@ -132,12 +132,51 @@ const formatDuration = (minutes) => {
   return m ? `${h}h ${m}m` : `${h}h`;
 };
 
-const formatRemaining = (ms) => {
-  const totalMin = Math.max(0, Math.ceil(ms / 60000));
+const MINUTE = 60000;
+
+/**
+ * Whole clock minutes from now until `end`, so the countdown agrees with the end time
+ * shown beside it (which leaves out seconds).
+ */
+const minutesUntil = (end, now) => Math.floor(end / MINUTE) - Math.floor(now / MINUTE);
+
+const formatRemaining = (totalMin) => {
+  if (totalMin < 1) return "<1 min";
   if (totalMin < 60) return `${totalMin} min`;
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
+};
+
+/** Whether to show AM/PM, following the user's Home Assistant time format setting. */
+const useAmPm = (locale) => {
+  const format = locale?.time_format;
+  if (format === "12") return true;
+  if (format === "24") return false;
+  const language = format === "system" ? undefined : locale?.language;
+  try {
+    // 22:00 shows as "10 PM" (or similar) in locales that use a 12-hour clock
+    return new Date(2023, 0, 1, 22).toLocaleString(language).includes("10");
+  } catch {
+    return new Date(2023, 0, 1, 22).toLocaleString().includes("10");
+  }
+};
+
+/** Format a time of day like Home Assistant does, honoring the user's locale settings. */
+const formatTime = (date, hass) => {
+  const locale = hass?.locale;
+  const amPm = useAmPm(locale);
+  const options = { hour: "numeric", minute: "2-digit", hourCycle: amPm ? "h12" : "h23" };
+  if (locale?.time_zone === "server" && hass?.config?.time_zone) {
+    options.timeZone = hass.config.time_zone;
+  }
+  // English only uses a 24-hour clock when asked for one explicitly
+  const language = locale?.language === "en" && !amPm ? "en-u-hc-h23" : locale?.language;
+  try {
+    return new Intl.DateTimeFormat(language, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
 };
 
 /**
@@ -222,20 +261,35 @@ class PuraDiffuserCard extends HTMLElement {
   }
 
   connectedCallback() {
-    // Refresh the timer countdown even when no state changes arrive, but only while
-    // a timer is counting down (plus one tick after it ends to show the presets again).
-    this._tick = setInterval(() => {
-      const timer = this._hass && this._entities ? this._state(this._entities.timer) : undefined;
-      const active = timer ? Date.parse(timer.state) > Date.now() : false;
-      if (!active && !this._timerWasActive) return;
-      this._timerWasActive = active;
-      this._renderKey = "";
-      this._render();
-    }, 30000);
+    // Redraw the timer countdown even when no state changes arrive. The render key
+    // includes the clock minute while a timer runs, so ticking just after each minute
+    // (and when the timer ends) only repaints when the countdown changes.
+    const schedule = () => {
+      const now = Date.now();
+      const end = this._timerEnd();
+      const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
+      const next = end > now ? Math.min(nextMinute, end) : nextMinute;
+      this._tick = setTimeout(() => {
+        this._render();
+        schedule();
+      }, next - now + 50);
+    };
+    clearTimeout(this._tick);
+    schedule();
+    // Timers are throttled in background tabs, so catch up when the page is shown again.
+    this._onVisible = () => document.visibilityState === "visible" && this._render();
+    document.addEventListener("visibilitychange", this._onVisible);
   }
 
   disconnectedCallback() {
-    clearInterval(this._tick);
+    clearTimeout(this._tick);
+    document.removeEventListener("visibilitychange", this._onVisible);
+  }
+
+  /** When the running timer ends, in milliseconds, or NaN without one. */
+  _timerEnd() {
+    const timer = this._hass && this._entities ? this._state(this._entities.timer) : undefined;
+    return timer ? Date.parse(timer.state) : NaN;
   }
 
   getCardSize() {
@@ -407,6 +461,9 @@ class PuraDiffuserCard extends HTMLElement {
       config,
       !!this._hass.themes?.darkMode,
       !!this._hass.user?.is_admin,
+      [this._hass.locale?.language, this._hass.locale?.time_format, this._hass.locale?.time_zone],
+      // the countdown, which changes with the clock rather than with any state
+      this._timerEnd() > Date.now() ? Math.floor(Date.now() / MINUTE) : null,
       [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
       e, // which entity fills each role, so swapping one for another rerenders
       ids.map((id) => {
@@ -611,14 +668,14 @@ class PuraDiffuserCard extends HTMLElement {
   _renderTimer(locked) {
     const timerState = this._state(this._entities.timer);
     const end = timerState ? Date.parse(timerState.state) : NaN;
-    const remaining = end - Date.now();
+    const now = Date.now();
 
-    if (remaining > 0) {
-      const endText = new Date(end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (end > now) {
+      const endText = formatTime(new Date(end), this._hass);
       return `
         <div class="section timer-active">
           <ha-icon icon="mdi:timer-sand"></ha-icon>
-          <div class="timer-text"><b>${esc(formatRemaining(remaining))}</b> left · ends ${esc(endText)}</div>
+          <div class="timer-text"><b>${esc(formatRemaining(minutesUntil(end, now)))}</b> left · ends ${esc(endText)}</div>
           <button class="pill" data-action="stop" ${locked ? "disabled" : ""}>Stop</button>
         </div>`;
     }
