@@ -9,9 +9,6 @@ from unittest.mock import MagicMock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
-from pytest_homeassistant_custom_component.common import (
-    mock_restore_cache_with_extra_data,
-)
 
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.sensor import _async_migrate_entities
@@ -20,7 +17,7 @@ from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from . import MockConfigEntry, setup_integration
+from . import MockConfigEntry, mock_restore_cache_with_extra_data, setup_integration
 from .conftest import HOME_MINI_ID, HOME_V5_ID
 
 # TODO: Remove the migration tests along with _async_migrate_entities after April 2027
@@ -563,14 +560,13 @@ async def test_runtime_holds_when_timer_ends(
 @pytest.mark.parametrize(
     ("extra_data", "expected"),
     [
-        ({"vial": 1700000000, "runtime": 10800}, 3),
         # A different vial starts over
         ({"vial": 1600000000, "runtime": 10800}, 1),
         # Nothing was kept before the runtime was held
         (None, 1),
     ],
 )
-async def test_runtime_restores_held_value(
+async def test_runtime_restore_needs_same_vial(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     mock_pura: MagicMock,
@@ -578,7 +574,7 @@ async def test_runtime_restores_held_value(
     extra_data: dict[str, Any] | None,
     expected: float,
 ) -> None:
-    """Test the runtime held for a vial survives a restart."""
+    """Test a restored runtime is only used for the vial it was held for."""
     entity_id = "sensor.home_v5_slot_1_runtime"
     if extra_data:
         mock_restore_cache_with_extra_data(hass, [(State(entity_id, "3"), extra_data)])
@@ -597,3 +593,41 @@ async def test_runtime_restores_held_value(
     await _setup(hass, config_entry)
 
     assert float(hass.states.get(entity_id).state) == expected
+
+
+async def test_runtime_hold_survives_reload(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test the runtime a sensor holds is saved and restored when it reloads."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
+    entity_id = "sensor.home_v5_slot_1_runtime"
+    home = devices[HOME_V5_ID]
+    home |= {"controller": "default", "schedules": [], "timer": None}
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": now - 3600,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    assert float(hass.states.get(entity_id).state) == 2
+
+    # The bay stops before its stored runtime catches up
+    home["bay1"]["activeAt"] = 0
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2
+
+    with patch("custom_components.pura.PLATFORMS", [Platform.SENSOR]):
+        assert await hass.config_entries.async_reload(config_entry.entry_id)
+        await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2

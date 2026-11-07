@@ -9,9 +9,17 @@ from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 
 try:
-    from pytest_homeassistant.common import MockConfigEntry
+    from pytest_homeassistant.common import (
+        MockConfigEntry,
+        mock_restore_cache_with_extra_data,
+    )
 except ImportError:  # Home Assistant < 2026.11
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant_custom_component.common import (
+        MockConfigEntry,
+        mock_restore_cache_with_extra_data,
+    )
+
+__all__ = ["MockConfigEntry", "mock_restore_cache_with_extra_data", "setup_integration"]
 
 
 async def setup_integration(
