@@ -267,13 +267,20 @@ class PuraDiffuserCard extends HTMLElement {
     };
     this._renderKey = "";
     this._discoveredFrom = undefined;
-    if (this._hass) this._render();
+    if (this._hass) {
+      this._render();
+      this._syncTick();
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
     this._render();
-    // A timer that started, stopped or changed may end before the pending tick
+    this._syncTick();
+  }
+
+  /** Reschedule the tick if the timer started, stopped or changed since it was set. */
+  _syncTick() {
     if (this.isConnected && !Object.is(this._timerEnd(), this._tickEnd)) this._scheduleTick();
   }
 
@@ -298,6 +305,9 @@ class PuraDiffuserCard extends HTMLElement {
     clearTimeout(this._tick);
     const now = Date.now();
     const end = this._timerEnd();
+    // The timer can end between drawing it and getting here, so redraw now
+    // rather than showing it until the next minute.
+    if (this._timerShown && !(end > now)) this._render();
     const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
     const next = end > now ? Math.min(nextMinute, end) : nextMinute;
     this._tickEnd = end;
@@ -507,6 +517,7 @@ class PuraDiffuserCard extends HTMLElement {
       this._paint(key, this._renderMessage("No Pura entities found for this device."));
       return;
     }
+    this._timerShown = false; // set again if the timer section is drawn
     this._paint(key, this._renderCard());
   }
 
@@ -695,6 +706,7 @@ class PuraDiffuserCard extends HTMLElement {
     const timerState = this._state(this._entities.timer);
     const end = timerState ? Date.parse(timerState.state) : NaN;
     const now = Date.now();
+    this._timerShown = end > now;
 
     if (end > now) {
       const endText = formatTime(new Date(end), this._hass);
