@@ -60,15 +60,19 @@ def get_runtime(device: dict[str, Any], bay: int) -> int:
     wearing_time: int = dig(device, f"bay{bay}.wearingTime") or 0
     if has_stale_timer(device):
         return wearing_time
-    # A timer can still be reported after it ends, so stop counting at its end
     if (
         device.get("controller") == "timer"
-        and (end := dig(device, "timer.end"))
+        and (timer := device.get("timer"))
         and (active_at := dig(device, f"bay{bay}.activeAt"))
         and not device.get("lastConnectedAt")
-        and time.time() > end
     ):
-        return wearing_time + max(0, int(end - active_at))
+        # A bay activated before the timer started isn't part of it, but can keep
+        # its old activation timestamp
+        if (start := timer.get("start")) and active_at < start:
+            return wearing_time
+        # A timer can still be reported after it ends, so stop counting at its end
+        if (end := timer.get("end")) and time.time() > end:
+            return wearing_time + max(0, int(end - active_at))
     return get_fragrance_runtime(device, bay)
 
 

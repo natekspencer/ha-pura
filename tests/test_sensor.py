@@ -550,6 +550,14 @@ async def test_runtime_holds_when_timer_ends(
     await refresh()
     assert runtime() == 3
 
+    # The vial ID can briefly go missing without losing the hold
+    home["bay1"] |= {"id": None, "wearingTime": 3600}
+    await refresh()
+    assert runtime() == 3
+    home["bay1"]["id"] = 1700000000
+    await refresh()
+    assert runtime() == 3
+
     # A new vial still starts its runtime over
     home |= {"controller": "timer", "timer": None}
     home["bay1"] |= {"id": 1800000000, "activeAt": now, "wearingTime": 0}
@@ -558,16 +566,18 @@ async def test_runtime_holds_when_timer_ends(
 
 
 @pytest.mark.parametrize(
-    ("extra_data", "vial_id", "expected"),
+    ("extra_data", "vial_id", "wearing_time", "expected"),
     [
         # A different vial starts over
-        ({"vial": 1600000000, "runtime": 10800}, 1700000000, 1),
+        ({"vial": 1600000000, "runtime": 10800}, 1700000000, 3600, 1),
         # A saved state without the vial it was held for
-        ({}, 1700000000, 1),
+        ({}, 1700000000, 3600, 1),
         # A missing vial ID doesn't match another missing one
-        ({"vial": None, "runtime": 10800}, None, 1),
+        ({"vial": None, "runtime": 10800}, None, 3600, 1),
         # Nothing saved, as before the runtime was held
-        (None, 1700000000, 1),
+        (None, 1700000000, 3600, 1),
+        # A saved runtime that isn't a number of seconds
+        ({"vial": 1700000000, "runtime": True}, 1700000000, 0, 0),
     ],
 )
 async def test_runtime_restore_needs_same_vial(
@@ -577,6 +587,7 @@ async def test_runtime_restore_needs_same_vial(
     devices: dict[str, dict[str, Any]],
     extra_data: dict[str, Any] | None,
     vial_id: int | None,
+    wearing_time: int,
     expected: float,
 ) -> None:
     """Test a restored runtime is only used for the vial it was held for."""
@@ -588,7 +599,7 @@ async def test_runtime_restore_needs_same_vial(
     home["bay1"] |= {
         "id": vial_id,
         "activeAt": 0,
-        "wearingTime": 3600,
+        "wearingTime": wearing_time,
         "fragrance": {"name": "Volcano"},
         "remaining": {"percent": 90},
     }
@@ -641,3 +652,50 @@ async def test_runtime_hold_survives_reload(
     await config_entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
     assert float(hass.states.get(entity_id).state) == 2
+
+
+async def test_runtime_ignores_bay_from_before_timer(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a bay's old activation doesn't count while a timer runs another bay."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
+    home = devices[HOME_V5_ID]
+    # A timer on bay 2 started an hour ago, while bay 1 kept an older activation
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": {"bay": 2, "intensity": 5, "start": now - 3600, "end": now + 3600},
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    for bay, active_at in (("bay1", now - 7200), ("bay2", now - 3600)):
+        home[bay] |= {
+            "id": 1700000000,
+            "activeAt": active_at,
+            "wearingTime": 3600,
+            "fragrance": {"name": "Volcano"},
+            "remaining": {"percent": 90},
+        }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+
+    def runtime(bay: int) -> float:
+        return float(hass.states.get(f"sensor.home_v5_slot_{bay}_runtime").state)
+
+    assert runtime(1) == 1
+    assert runtime(2) == 2
+
+    # Still after the timer ends
+    freezer.tick(timedelta(hours=2))
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert runtime(1) == 1
+    assert runtime(2) == 3
