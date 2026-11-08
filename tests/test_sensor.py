@@ -562,7 +562,9 @@ async def test_runtime_holds_when_timer_ends(
     [
         # A different vial starts over
         ({"vial": 1600000000, "runtime": 10800}, 1),
-        # Nothing was kept before the runtime was held
+        # A saved state without the vial it was held for
+        ({}, 1),
+        # Nothing saved, as before the runtime was held
         (None, 1),
     ],
 )
@@ -576,7 +578,7 @@ async def test_runtime_restore_needs_same_vial(
 ) -> None:
     """Test a restored runtime is only used for the vial it was held for."""
     entity_id = "sensor.home_v5_slot_1_runtime"
-    if extra_data:
+    if extra_data is not None:
         mock_restore_cache_with_extra_data(hass, [(State(entity_id, "3"), extra_data)])
     home = devices[HOME_V5_ID]
     home |= {"controller": "default", "schedules": [], "timer": None}
@@ -630,4 +632,9 @@ async def test_runtime_hold_survives_reload(
     with patch("custom_components.pura.PLATFORMS", [Platform.SENSOR]):
         assert await hass.config_entries.async_reload(config_entry.entry_id)
         await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2
+
+    # The restored runtime is still held on the next update
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
     assert float(hass.states.get(entity_id).state) == 2
