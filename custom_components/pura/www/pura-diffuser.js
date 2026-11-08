@@ -133,6 +133,7 @@ const formatDuration = (minutes) => {
 };
 
 const MINUTE = 60000;
+const MAX_TICK = 30000;
 
 /**
  * Whole clock minutes from now until `end`, so the countdown agrees with the end time
@@ -298,8 +299,9 @@ class PuraDiffuserCard extends HTMLElement {
 
   /**
    * Redraw the timer countdown even when no state changes arrive. The render key
-   * includes the clock minute while a timer runs, so ticking just after each minute
-   * (and when the timer ends) only repaints when the countdown changes.
+   * includes the clock minute while a timer runs, so ticking just after each minute,
+   * when the timer ends and at least every 30 seconds only repaints when the
+   * countdown changes.
    */
   _scheduleTick() {
     clearTimeout(this._tick);
@@ -309,7 +311,8 @@ class PuraDiffuserCard extends HTMLElement {
     // rather than showing it until the next minute.
     if (this._timerShown && !(end > now)) this._render();
     const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
-    const next = end > now ? Math.min(nextMinute, end) : nextMinute;
+    // Also check at least every 30 seconds, in case the clock jumps
+    const next = Math.min(end > now ? Math.min(nextMinute, end) : nextMinute, now + MAX_TICK);
     this._tickEnd = end;
     this._tick = setTimeout(() => {
       this._render();
