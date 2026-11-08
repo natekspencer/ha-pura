@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.sensor import _async_migrate_entities
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from . import MockConfigEntry, setup_integration
+from . import MockConfigEntry, mock_restore_cache_with_extra_data, setup_integration
 from .conftest import HOME_MINI_ID, HOME_V5_ID
 
 # TODO: Remove the migration tests along with _async_migrate_entities after April 2027
@@ -423,3 +426,276 @@ async def test_two_slot_devices_have_no_third_slot(
     assert not entity_registry.async_get_entity_id(
         SENSOR_DOMAIN, DOMAIN, f"{HOME_V5_ID}-bay_3"
     )
+
+
+async def test_ended_timer_is_not_active(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test a timer the API left behind after it ended is not shown as diffusing."""
+    home = devices[HOME_V5_ID]
+    # How the API reports a device after its timer ends
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": None,
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": 1700000000,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "none"
+    assert hass.states.get("sensor.home_v5_controller").state == "default"
+    # The runtime stops counting from when the bay was activated
+    assert float(hass.states.get("sensor.home_v5_slot_1_runtime").state) == 1.0
+
+    # Auto-alternate running without a timer is tracked in the oscillation state,
+    # which still reports the timer as its controller
+    home |= {
+        "diffusionMode": "oscillation-multi-bay",
+        "oscillation": {"state": {"controllingFeature": "timer", "currentIndex": 0}},
+    }
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
+    assert hass.states.get("sensor.home_v5_controller").state == "default"
+    assert hass.states.get("sensor.home_v5_timer").state == "unknown"
+
+    # A timer without auto-alternate is running while it has its own details
+    home |= {
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "timer": {"bay": 1, "intensity": 5, "start": 1700000000, "end": 1700003600},
+    }
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.home_v5_active_fragrance").state == "Volcano"
+    assert hass.states.get("sensor.home_v5_controller").state == "timer"
+
+
+async def test_runtime_holds_when_timer_ends(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test the runtime stops at a timer's end and doesn't drop when it's cleared."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
+    home = devices[HOME_V5_ID]
+    # A two hour timer that started an hour ago, on a vial that had run for an hour
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": {"bay": 1, "intensity": 5, "start": now - 3600, "end": now + 3600},
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": now - 3600,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+
+    def runtime() -> float:
+        return float(hass.states.get("sensor.home_v5_slot_1_runtime").state)
+
+    async def refresh() -> None:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert runtime() == 2
+
+    # A timer still reported after it ends stops counting at its end
+    freezer.tick(timedelta(hours=1, minutes=30))
+    await refresh()
+    assert runtime() == 3
+
+    # The timer is cleared first, leaving the runtime from before it started
+    home["timer"] = None
+    await refresh()
+    assert runtime() == 3
+
+    # The bay can also stop before its stored runtime catches up
+    home["controller"] = "default"
+    home["bay1"]["activeAt"] = 0
+    await refresh()
+    assert runtime() == 3
+
+    # Then the stored runtime catches up
+    home["bay1"]["wearingTime"] = 10800
+    await refresh()
+    assert runtime() == 3
+
+    # The vial ID can briefly go missing without losing the hold
+    home["bay1"] |= {"id": None, "wearingTime": 3600}
+    await refresh()
+    assert runtime() == 3
+    home["bay1"]["id"] = 1700000000
+    await refresh()
+    assert runtime() == 3
+
+    # A new vial still starts its runtime over
+    home |= {"controller": "timer", "timer": None}
+    home["bay1"] |= {"id": 1800000000, "activeAt": now, "wearingTime": 0}
+    await refresh()
+    assert runtime() == 0
+
+
+@pytest.mark.parametrize(
+    ("extra_data", "vial_id", "wearing_time", "expected"),
+    [
+        # A different vial starts over
+        ({"vial": 1600000000, "runtime": 10800}, 1700000000, 3600, 1),
+        # A saved state without the vial it was held for
+        ({}, 1700000000, 3600, 1),
+        # A missing vial ID doesn't match another missing one
+        ({"vial": None, "runtime": 10800}, None, 3600, 1),
+        # Nothing saved, as before the runtime was held
+        (None, 1700000000, 3600, 1),
+        # A saved runtime that isn't a number of seconds
+        ({"vial": 1700000000, "runtime": True}, 1700000000, 0, 0),
+    ],
+)
+async def test_runtime_restore_needs_same_vial(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    extra_data: dict[str, Any] | None,
+    vial_id: int | None,
+    wearing_time: int,
+    expected: float,
+) -> None:
+    """Test a restored runtime is only used for the vial it was held for."""
+    entity_id = "sensor.home_v5_slot_1_runtime"
+    if extra_data is not None:
+        mock_restore_cache_with_extra_data(hass, [(State(entity_id, "3"), extra_data)])
+    home = devices[HOME_V5_ID]
+    home |= {"controller": "default", "schedules": [], "timer": None}
+    home["bay1"] |= {
+        "id": vial_id,
+        "activeAt": 0,
+        "wearingTime": wearing_time,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+
+    assert float(hass.states.get(entity_id).state) == expected
+
+
+async def test_runtime_hold_survives_reload(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test the runtime a sensor holds is saved and restored when it reloads."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
+    entity_id = "sensor.home_v5_slot_1_runtime"
+    home = devices[HOME_V5_ID]
+    home |= {"controller": "default", "schedules": [], "timer": None}
+    home["bay1"] |= {
+        "id": 1700000000,
+        "activeAt": now - 3600,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+        "remaining": {"percent": 90},
+    }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+    assert float(hass.states.get(entity_id).state) == 2
+
+    # The bay stops before its stored runtime catches up
+    home["bay1"]["activeAt"] = 0
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2
+
+    with patch("custom_components.pura.PLATFORMS", [Platform.SENSOR]):
+        assert await hass.config_entries.async_reload(config_entry.entry_id)
+        await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2
+
+    # The restored runtime is still held on the next update
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(entity_id).state) == 2
+
+
+async def test_runtime_ignores_bay_from_before_timer(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a bay's old activation doesn't count while a timer runs another bay."""
+    freezer.move_to("2026-06-15 12:00:00+00:00")
+    now = int(time.time())
+    home = devices[HOME_V5_ID]
+    # A timer on bay 2 started an hour ago, while bay 1 kept an older activation
+    home |= {
+        "controller": "timer",
+        "diffusionMode": "standard",
+        "oscillation": None,
+        "schedules": [],
+        "timer": {"bay": 2, "intensity": 5, "start": now - 3600, "end": now + 3600},
+        "deviceDefaults": {"bay1Intensity": 5, "bay2Intensity": 5},
+    }
+    for bay, active_at in (("bay1", now - 7200), ("bay2", now - 3600)):
+        home[bay] |= {
+            "id": 1700000000,
+            "activeAt": active_at,
+            "wearingTime": 3600,
+            "fragrance": {"name": "Volcano"},
+            "remaining": {"percent": 90},
+        }
+    for device_id in list(devices):
+        if device_id != HOME_V5_ID:
+            del devices[device_id]
+    await _setup(hass, config_entry)
+
+    def runtime(bay: int) -> float:
+        return float(hass.states.get(f"sensor.home_v5_slot_{bay}_runtime").state)
+
+    assert runtime(1) == 1
+    assert runtime(2) == 2
+
+    # Still after the timer ends
+    freezer.tick(timedelta(hours=2))
+    await config_entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert runtime(1) == 1
+    assert runtime(2) == 3

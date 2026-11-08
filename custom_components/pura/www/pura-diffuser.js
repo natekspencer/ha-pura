@@ -132,12 +132,67 @@ const formatDuration = (minutes) => {
   return m ? `${h}h ${m}m` : `${h}h`;
 };
 
-const formatRemaining = (ms) => {
-  const totalMin = Math.max(0, Math.ceil(ms / 60000));
+const MINUTE = 60000;
+const MAX_TICK = 30000;
+
+/**
+ * Whole clock minutes from now until `end`, so the countdown agrees with the end time
+ * shown beside it (which leaves out seconds).
+ */
+const minutesUntil = (end, now) => Math.floor(end / MINUTE) - Math.floor(now / MINUTE);
+
+const formatRemaining = (totalMin) => {
+  if (totalMin < 1) return "<1 min";
   if (totalMin < 60) return `${totalMin} min`;
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
+};
+
+/** Whether to show AM/PM, following the user's Home Assistant time format setting. */
+const useAmPm = (locale) => {
+  const format = locale?.time_format;
+  if (format === "12") return true;
+  if (format === "24") return false;
+  const language = format === "system" ? undefined : locale?.language;
+  const resolve = (lang) => new Intl.DateTimeFormat(lang, { hour: "numeric" }).resolvedOptions();
+  let options;
+  try {
+    options = resolve(language);
+  } catch {
+    options = resolve(undefined);
+  }
+  // Read the locale's clock rather than its output, which may not use ASCII digits
+  return options.hourCycle ? ["h11", "h12"].includes(options.hourCycle) : !!options.hour12;
+};
+
+/** Format a time of day like Home Assistant does, honoring the user's locale settings. */
+const formatTime = (date, hass) => {
+  const locale = hass?.locale;
+  const amPm = useAmPm(locale);
+  const options = { hour: "numeric", minute: "2-digit", hourCycle: amPm ? "h12" : "h23" };
+  if (locale?.time_zone === "server" && hass?.config?.time_zone) {
+    options.timeZone = hass.config.time_zone;
+  }
+  // English only uses a 24-hour clock when asked for one explicitly
+  const language = locale?.language === "en" && !amPm ? "en-u-hc-h23" : locale?.language;
+  // The browser may not know the language or the server's time zone. Try without the
+  // language first, then in the browser's time zone, which is labeled so it isn't
+  // mistaken for the server's.
+  const { timeZone, ...browserZone } = options;
+  const attempts = [[language, options], [undefined, options]];
+  if (timeZone) {
+    browserZone.timeZoneName = "short";
+    attempts.push([language, browserZone], [undefined, browserZone]);
+  }
+  for (const [lang, opts] of attempts) {
+    try {
+      return new Intl.DateTimeFormat(lang, opts).format(date);
+    } catch {
+      // try the next fallback
+    }
+  }
+  return date.toLocaleTimeString();
 };
 
 /**
@@ -213,29 +268,62 @@ class PuraDiffuserCard extends HTMLElement {
     };
     this._renderKey = "";
     this._discoveredFrom = undefined;
-    if (this._hass) this._render();
+    if (this._hass) {
+      this._render();
+      this._syncTick();
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
     this._render();
+    this._syncTick();
+  }
+
+  /** Reschedule the tick if the timer started, stopped or changed since it was set. */
+  _syncTick() {
+    if (this.isConnected && !Object.is(this._timerEnd(), this._tickEnd)) this._scheduleTick();
   }
 
   connectedCallback() {
-    // Refresh the timer countdown even when no state changes arrive, but only while
-    // a timer is counting down (plus one tick after it ends to show the presets again).
-    this._tick = setInterval(() => {
-      const timer = this._hass && this._entities ? this._state(this._entities.timer) : undefined;
-      const active = timer ? Date.parse(timer.state) > Date.now() : false;
-      if (!active && !this._timerWasActive) return;
-      this._timerWasActive = active;
-      this._renderKey = "";
-      this._render();
-    }, 30000);
+    this._scheduleTick();
+    // Timers are throttled in background tabs, so catch up when the page is shown again.
+    this._onVisible = () => document.visibilityState === "visible" && this._render();
+    document.addEventListener("visibilitychange", this._onVisible);
   }
 
   disconnectedCallback() {
-    clearInterval(this._tick);
+    clearTimeout(this._tick);
+    document.removeEventListener("visibilitychange", this._onVisible);
+  }
+
+  /**
+   * Redraw the timer countdown even when no state changes arrive. The render key
+   * includes the clock minute while a timer runs, so ticking just after each minute,
+   * when the timer ends and at least every 30 seconds only repaints when the
+   * countdown changes.
+   */
+  _scheduleTick() {
+    clearTimeout(this._tick);
+    const now = Date.now();
+    const end = this._timerEnd();
+    // The timer can end between drawing it and getting here, so redraw now
+    // rather than showing it until the next minute.
+    if (this._timerShown && !(end > now)) this._render();
+    const nextMinute = (Math.floor(now / MINUTE) + 1) * MINUTE;
+    // Also check at least every 30 seconds, in case the clock jumps
+    const next = Math.min(end > now ? Math.min(nextMinute, end) : nextMinute, now + MAX_TICK);
+    this._tickEnd = end;
+    this._tick = setTimeout(() => {
+      this._render();
+      this._scheduleTick();
+    }, next - now + 50);
+  }
+
+  /** When the running timer ends, in milliseconds, or NaN without one. */
+  _timerEnd() {
+    const timer = this._hass && this._entities ? this._state(this._entities.timer) : undefined;
+    return timer ? Date.parse(timer.state) : NaN;
   }
 
   getCardSize() {
@@ -407,8 +495,16 @@ class PuraDiffuserCard extends HTMLElement {
       config,
       !!this._hass.themes?.darkMode,
       !!this._hass.user?.is_admin,
+      [
+        this._hass.locale?.language, this._hass.locale?.time_format, this._hass.locale?.time_zone,
+        this._hass.config?.time_zone, Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ],
+      // the countdown, which changes with the clock rather than with any state
+      this._timerEnd() > Date.now() ? Math.floor(Date.now() / MINUTE) : null,
       [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
       e, // which entity fills each role, so swapping one for another rerenders
+      // the runtimes as shown, since Home Assistant can swap its number formatter later
+      Object.values(e.bays).map((b) => this._formatState(this._state(b.runtime))),
       ids.map((id) => {
         const s = this._hass.states[id];
         return s && [
@@ -424,6 +520,7 @@ class PuraDiffuserCard extends HTMLElement {
       this._paint(key, this._renderMessage("No Pura entities found for this device."));
       return;
     }
+    this._timerShown = false; // set again if the timer section is drawn
     this._paint(key, this._renderCard());
   }
 
@@ -611,14 +708,15 @@ class PuraDiffuserCard extends HTMLElement {
   _renderTimer(locked) {
     const timerState = this._state(this._entities.timer);
     const end = timerState ? Date.parse(timerState.state) : NaN;
-    const remaining = end - Date.now();
+    const now = Date.now();
+    this._timerShown = end > now;
 
-    if (remaining > 0) {
-      const endText = new Date(end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (end > now) {
+      const endText = formatTime(new Date(end), this._hass);
       return `
         <div class="section timer-active">
           <ha-icon icon="mdi:timer-sand"></ha-icon>
-          <div class="timer-text"><b>${esc(formatRemaining(remaining))}</b> left · ends ${esc(endText)}</div>
+          <div class="timer-text"><b>${esc(formatRemaining(minutesUntil(end, now)))}</b> left · ends ${esc(endText)}</div>
           <button class="pill" data-action="stop" ${locked ? "disabled" : ""}>Stop</button>
         </div>`;
     }

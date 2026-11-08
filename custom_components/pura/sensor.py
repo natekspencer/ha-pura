@@ -8,13 +8,7 @@ from datetime import datetime
 import re
 from typing import Any
 
-from pypura.utils import (
-    dig,
-    get_fragrance_name,
-    get_fragrance_remaining,
-    get_fragrance_runtime,
-    has_fragrance,
-)
+from pypura.utils import dig, get_fragrance_name, get_fragrance_remaining, has_fragrance
 
 from homeassistant.components.sensor import (
     DOMAIN as SENSOR_DOMAIN,
@@ -27,13 +21,14 @@ from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.util import slugify
 from homeassistant.util.dt import UTC, utc_from_timestamp
 
 from . import PuraConfigEntry
 from .const import DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
-from .entity import PuraEntity, get_active_bay
+from .entity import PuraEntity, get_active_bay, get_controller, get_runtime
 
 HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 
@@ -59,6 +54,8 @@ class PuraSensorEntityDescription(SensorEntityDescription):
     available_fn: Callable[[dict], bool] | None = None
     picture_fn: Callable[[dict], str | None] | None = None
     value_fn: Callable[[dict], Any | None]
+    # Identifies the vial a runtime belongs to, so it doesn't drop for the same vial
+    vial_fn: Callable[[dict], Any] | None = None
 
 
 def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
@@ -92,7 +89,8 @@ def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
             state_class=SensorStateClass.TOTAL_INCREASING,
             suggested_unit_of_measurement=UnitOfTime.HOURS,
             available_fn=lambda data: has_fragrance(data, bay),
-            value_fn=lambda data: get_fragrance_runtime(data, bay),
+            value_fn=lambda data: get_runtime(data, bay),
+            vial_fn=lambda data: dig(data, f"bay{bay}.id"),
         ),
         PuraSensorEntityDescription(
             key=f"bay_{bay}_installed",
@@ -177,7 +175,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             entity_category=EntityCategory.DIAGNOSTIC,
             value_fn=lambda data: (
                 "schedule"
-                if (controller := data["controller"]) not in ("default", "timer")
+                if (controller := get_controller(data)) not in ("default", "timer")
                 and controller in {s.get("id") for s in data.get("schedules") or []}
                 else controller
             ),
@@ -275,7 +273,7 @@ async def async_setup_entry(
         if new_devices := current_devices - added_devices:
             _async_migrate_entities(hass, coordinator)
             entities = [
-                PuraSensorEntity(
+                (PuraRuntimeSensorEntity if description.vial_fn else PuraSensorEntity)(
                     coordinator=coordinator,
                     description=description,
                     device_type=device_type,
@@ -337,3 +335,60 @@ class PuraSensorEntity(PuraEntity, SensorEntity):
     def native_value(self) -> str | int | datetime | None:
         """Return the value reported by the sensor."""
         return self.entity_description.value_fn(self.get_device())
+
+
+@dataclass
+class PuraRuntimeExtraStoredData(ExtraStoredData):
+    """The runtime a vial has reached, kept across restarts."""
+
+    vial: Any
+    runtime: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a dict representation of the data."""
+        return {"vial": self.vial, "runtime": self.runtime}
+
+
+class PuraRuntimeSensorEntity(PuraSensorEntity, RestoreEntity):
+    """Pura fragrance runtime sensor that doesn't drop for the same vial.
+
+    The API can clear a timer, or stop the bay, before the bay's stored runtime
+    catches up, so the runtime would drop back to its value from before the bay
+    started. Statistics treat a large drop as a reset, so keep the runtime reached
+    so far for the same vial until the stored value catches up. A new vial starts
+    over.
+    """
+
+    _runtime: PuraRuntimeExtraStoredData | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the runtime reached before a restart."""
+        await super().async_added_to_hass()
+        if (
+            (last := await self.async_get_last_extra_data())
+            and (data := last.as_dict()).get("vial") is not None
+            and isinstance(runtime := data.get("runtime"), int)
+            and not isinstance(runtime, bool)
+        ):
+            self._runtime = PuraRuntimeExtraStoredData(data["vial"], runtime)
+
+    @property
+    def extra_restore_state_data(self) -> PuraRuntimeExtraStoredData | None:
+        """Return the runtime reached, with the vial it belongs to."""
+        return self._runtime
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the runtime, holding it for the same vial."""
+        device = self.get_device()
+        if (value := self.entity_description.value_fn(device)) is None:
+            return None
+        held = self._runtime
+        if (vial := self.entity_description.vial_fn(device)) is None:
+            # The API can briefly leave out the vial ID. Nothing is held for a missing
+            # ID, but keep any held runtime, and don't drop below it, until it's back.
+            return max(value, held.runtime) if held else value
+        if held and held.vial == vial and value < held.runtime:
+            value = held.runtime
+        self._runtime = PuraRuntimeExtraStoredData(vial, value)
+        return value

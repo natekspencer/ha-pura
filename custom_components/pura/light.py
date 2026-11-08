@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.color import color_rgb_to_hex, rgb_hex_to_rgb_list
 
 from . import PuraConfigEntry
-from .entity import PuraEntity
+from .entity import PuraEntity, get_controller
 
 LIGHT_DESCRIPTION = LightEntityDescription(
     key="nightlight", translation_key="nightlight"
@@ -96,7 +96,7 @@ class PuraLightEntity(PuraEntity, LightEntity):
         """Get the nightlight data."""
         device = self.get_device()
         data: dict | None = None
-        if (controller := device["controller"]) not in ("default", "timer"):
+        if (controller := get_controller(device)) not in ("default", "timer"):
             for schedule in device.get("schedules") or []:
                 if schedule.get("id") == controller:
                     data = schedule["nightlight"]

@@ -69,6 +69,15 @@ def test_get_active_bay() -> None:
     assert get_active_bay({"bay1": {"activeAt": 0}, "bay2": {"activeAt": 0}}) is None
     assert get_active_bay({"bay1": None, "bay2": None}) is None
 
+    # A timer that has ended can leave its bay's activation timestamp behind
+    stale = {"controller": "timer", "timer": None, "bay1": {"activeAt": ACTIVE_AT}}
+    assert get_active_bay(stale) is None
+    assert get_active_bay(stale | {"oscillation": {"state": {}}}) is None
+    assert (
+        get_active_bay(stale | {"oscillation": {"state": {"type": "multi_bay"}}}) == 1
+    )
+    assert get_active_bay(stale | {"timer": {"bay": 1}}) == 1
+
 
 async def test_fragrance_follows_active_bay(
     hass: HomeAssistant, mock_pura: MagicMock, devices: dict[str, dict[str, Any]]

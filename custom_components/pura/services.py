@@ -5,12 +5,7 @@ from __future__ import annotations
 import asyncio
 import functools
 
-from pypura.utils import (
-    get_device_name,
-    get_fragrance_remaining,
-    get_fragrance_runtime as runtime,
-    has_fragrance,
-)
+from pypura.utils import get_device_name, get_fragrance_remaining, has_fragrance
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntryState
@@ -25,6 +20,7 @@ from homeassistant.helpers.service import async_extract_entity_ids
 
 from .const import ATTR_DURATION, ATTR_INTENSITY, ATTR_SLOT, BAYS, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator
+from .entity import get_runtime
 
 SERVICE_START_TIMER = "start_timer"
 SERVICE_TIMER_SCHEMA = vol.All(
@@ -112,7 +108,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
                     fragrance_bays,
                     key=lambda bay: (
                         -(get_fragrance_remaining(device, bay) or 0),
-                        runtime(device, bay),
+                        get_runtime(device, bay),
                     ),
                 )
             elif slot not in fragrance_bays:
