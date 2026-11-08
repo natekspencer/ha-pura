@@ -366,7 +366,7 @@ class PuraRuntimeSensorEntity(PuraSensorEntity, RestoreEntity):
         await super().async_added_to_hass()
         if (
             (last := await self.async_get_last_extra_data())
-            and "vial" in (data := last.as_dict())
+            and (data := last.as_dict()).get("vial") is not None
             and isinstance(runtime := data.get("runtime"), int)
         ):
             self._runtime = PuraRuntimeExtraStoredData(data["vial"], runtime)
@@ -382,7 +382,10 @@ class PuraRuntimeSensorEntity(PuraSensorEntity, RestoreEntity):
         device = self.get_device()
         if (value := self.entity_description.value_fn(device)) is None:
             return None
-        vial = self.entity_description.vial_fn(device)
+        if (vial := self.entity_description.vial_fn(device)) is None:
+            # Without a vial ID there's nothing to tie a held runtime to
+            self._runtime = None
+            return value
         if (held := self._runtime) and held.vial == vial and value < held.runtime:
             value = held.runtime
         self._runtime = PuraRuntimeExtraStoredData(vial, value)

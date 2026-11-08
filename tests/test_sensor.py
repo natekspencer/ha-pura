@@ -558,14 +558,16 @@ async def test_runtime_holds_when_timer_ends(
 
 
 @pytest.mark.parametrize(
-    ("extra_data", "expected"),
+    ("extra_data", "vial_id", "expected"),
     [
         # A different vial starts over
-        ({"vial": 1600000000, "runtime": 10800}, 1),
+        ({"vial": 1600000000, "runtime": 10800}, 1700000000, 1),
         # A saved state without the vial it was held for
-        ({}, 1),
+        ({}, 1700000000, 1),
+        # A missing vial ID doesn't match another missing one
+        ({"vial": None, "runtime": 10800}, None, 1),
         # Nothing saved, as before the runtime was held
-        (None, 1),
+        (None, 1700000000, 1),
     ],
 )
 async def test_runtime_restore_needs_same_vial(
@@ -574,6 +576,7 @@ async def test_runtime_restore_needs_same_vial(
     mock_pura: MagicMock,
     devices: dict[str, dict[str, Any]],
     extra_data: dict[str, Any] | None,
+    vial_id: int | None,
     expected: float,
 ) -> None:
     """Test a restored runtime is only used for the vial it was held for."""
@@ -583,7 +586,7 @@ async def test_runtime_restore_needs_same_vial(
     home = devices[HOME_V5_ID]
     home |= {"controller": "default", "schedules": [], "timer": None}
     home["bay1"] |= {
-        "id": 1700000000,
+        "id": vial_id,
         "activeAt": 0,
         "wearingTime": 3600,
         "fragrance": {"name": "Volcano"},
