@@ -564,7 +564,14 @@ class PuraDiffuserCard extends HTMLElement {
 
   _paint(key, html) {
     this._renderKey = key;
+    // Repainting replaces every control, so keep keyboard focus on the same one.
+    const { action, value } = this.shadowRoot.activeElement?.dataset ?? {};
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>${html}`;
+    if (action) {
+      [...this.shadowRoot.querySelectorAll("[data-action]")]
+        .find((el) => el.dataset.action === action && el.dataset.value === value)
+        ?.focus();
+    }
     // Fall back to the drawn vial if a fragrance image can't be loaded.
     // ha-state-icon takes its state as properties, which innerHTML can't set.
     for (const icon of this.shadowRoot.querySelectorAll("ha-state-icon[data-entity]")) {
