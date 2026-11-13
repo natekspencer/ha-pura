@@ -570,7 +570,7 @@ class PuraDiffuserCard extends HTMLElement {
     if (action) {
       [...this.shadowRoot.querySelectorAll("[data-action]")]
         .find((el) => el.dataset.action === action && el.dataset.value === value)
-        ?.focus();
+        ?.focus({ preventScroll: true }); // without scrolling the dashboard back to it
     }
     // Fall back to the drawn vial if a fragrance image can't be loaded.
     // ha-state-icon takes its state as properties, which innerHTML can't set.
