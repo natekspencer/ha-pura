@@ -195,6 +195,31 @@ const formatTime = (date, hass) => {
   return date.toLocaleTimeString();
 };
 
+/** The largest unit for a relative time, as [unit, milliseconds in it]. */
+const RELATIVE_UNITS = [
+  ["year", 365 * 24 * 60 * MINUTE],
+  ["month", 30 * 24 * 60 * MINUTE],
+  ["week", 7 * 24 * 60 * MINUTE],
+  ["day", 24 * 60 * MINUTE],
+  ["hour", 60 * MINUTE],
+  ["minute", MINUTE],
+];
+
+// English, like the rest of the card's text
+const RELATIVE_FORMAT = new Intl.RelativeTimeFormat("en");
+
+/**
+ * How long ago `date` was, like "5 minutes ago". It only changes with the
+ * clock minute, which the card already ticks on.
+ */
+const formatRelative = (date) => {
+  const elapsed = Math.max(0, Date.now() - date); // a clock ahead of ours reads as now
+  const found = RELATIVE_UNITS.find(([, ms]) => elapsed >= ms);
+  if (!found) return "just now";
+  const [unit, size] = found;
+  return RELATIVE_FORMAT.format(-Math.floor(elapsed / size), unit);
+};
+
 /**
  * Find a Pura device's entities by their registry translation keys. The card ships with
  * the integration, so these always match the keys of the integration that serves it.
@@ -222,6 +247,7 @@ function discoverEntities(hass, deviceId) {
     else if (domain === "sensor" && key === "timer") found.timer = id;
     else if (domain === "sensor" && key === "battery") found.battery = id;
     else if (domain === "sensor" && key === "intensity") found.fan_intensity = id; // Pura Car
+    else if (domain === "sensor" && key === "last_active") found.last_active = id; // Pura Car
     // Single-slot devices (Mini, Car)
     else if (domain === "sensor" && key === "fragrance") bay(1).name = id;
     else if (domain === "sensor" && key === "fragrance_remaining") bay(1).remaining = id;
@@ -382,6 +408,17 @@ class PuraDiffuserCard extends HTMLElement {
       : `${stateObj.state} ${stateObj.attributes.unit_of_measurement || ""}`.trim();
   }
 
+  /**
+   * When a Pura Car was last active, like "5 minutes ago". The car can't be started from
+   * Home Assistant and doesn't report whether it's diffusing, so the card shows this
+   * instead of whether it's running.
+   */
+  _lastActiveText() {
+    const stateObj = this._entities ? this._state(this._entities.last_active) : undefined;
+    const when = stateObj && !isUnavailable(stateObj) ? Date.parse(stateObj.state) : NaN;
+    return Number.isFinite(when) ? formatRelative(new Date(when)) : undefined;
+  }
+
   // ---------------------------------------------------------------- actions
 
   _onClick(ev) {
@@ -486,7 +523,7 @@ class PuraDiffuserCard extends HTMLElement {
     const ids = [
       e.fragrance, e.intensity, e.active_fragrance, e.controller, e.timer, e.battery,
       e.fan_intensity, e.auto_alternate, e.away_mode, e.ambient_mode, e.nightlight,
-      e.connected,
+      e.connected, e.last_active,
       ...Object.values(e.bays).flatMap((b) => [b.name, b.remaining, b.runtime, b.low]),
     ].filter(Boolean);
 
@@ -501,6 +538,7 @@ class PuraDiffuserCard extends HTMLElement {
       ],
       // the countdown, which changes with the clock rather than with any state
       this._timerEnd() > Date.now() ? Math.floor(Date.now() / MINUTE) : null,
+      this._lastActiveText(), // "5 minutes ago", which also changes with the clock
       [device?.name_by_user, device?.name, device?.area_id ? this._hass.areas?.[device.area_id]?.name : null],
       e, // which entity fills each role, so swapping one for another rerenders
       // the runtimes as shown, since Home Assistant can swap its number formatter later
@@ -569,9 +607,10 @@ class PuraDiffuserCard extends HTMLElement {
       : !isUnavailable(activeBayState)
         ? activeBayState.state
         : "";
+    const lastActive = this._lastActiveText();
     const subtitle = [
       area && area !== title ? area : null,
-      running ? `Diffusing ${activeName}`.trim() : "Idle",
+      running ? `Diffusing ${activeName}`.trim() : lastActive ? `Last active ${lastActive}` : "Idle",
     ]
       .filter(Boolean)
       .map(esc)
