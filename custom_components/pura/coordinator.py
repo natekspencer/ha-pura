@@ -9,11 +9,12 @@ import random
 from typing import Any, NamedTuple
 
 from pypura import Pura, PuraAuthenticationError
-from pypura.utils import merge_websocket_update
+from pypura.car_ble import PuraCarStatus
+from pypura.utils import dig, merge_websocket_update
 from pypura.ws_subscriber import WebSocketSubscriber
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
@@ -32,6 +33,44 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def apply_car_status(
+    device: dict[str, Any], status: PuraCarStatus, read_at: float
+) -> bool:
+    """Layer a car's Bluetooth reading over its cloud data.
+
+    The car only syncs with the cloud through the Pura app, so a reading is usually
+    newer. Returns `False`, changing nothing, if the cloud has caught up since.
+    """
+    cloud_at = max(
+        device.get("lastConnectedAt") or 0, dig(device, "bay1.activeAt") or 0
+    )
+    if cloud_at >= read_at:
+        return False
+
+    device["batteryRemaining"] = status.battery_level
+    device["fwVersion"] = status.firmware
+    if status.fragrance_code is None:
+        device["bay1"] = None
+        return True
+
+    bay = device["bay1"] = dict(device.get("bay1") or {})
+    if bay.get("code") != status.fragrance_code:
+        # A new fragrance, whose name and details only the cloud has
+        bay.pop("fragrance", None)
+        bay["lowFragrance"] = False
+    elif bay.get("refillId") not in (None, status.cartridge_id):
+        bay["lowFragrance"] = False  # a new pod of the same fragrance
+    bay |= {
+        "code": status.fragrance_code,
+        "refillId": status.cartridge_id,
+        "wearingTime": status.runtime,
+        "fanIntensity": status.intensity,
+        # The car only answers while it's on
+        "activeAt": int(read_at),
+    }
+    return True
 
 
 class JitterBackoffMixin:
@@ -102,6 +141,8 @@ class PuraDataUpdateCoordinator(
         """Initialize."""
         self.api = client
         self.devices: dict[str, dict[str, Any]] = {}
+        # Bluetooth readings of cars, with when each was read
+        self._car_readings: dict[str, tuple[float, PuraCarStatus]] = {}
 
         self._init_jitter_backoff(config_entry)
 
@@ -146,6 +187,30 @@ class PuraDataUpdateCoordinator(
 
         raise LookupError(f"Device {device_id!r} not found")
 
+    @property
+    def car_readings(self) -> dict[str, tuple[float, PuraCarStatus]]:
+        """Return the Bluetooth readings shown over the cloud data, with when each was read."""
+        return self._car_readings
+
+    @callback
+    def async_set_car_status(
+        self, device_id: str, status: PuraCarStatus, read_at: float
+    ) -> None:
+        """Show a car's Bluetooth reading until the cloud has newer data."""
+        self._car_readings[device_id] = (read_at, status)
+        self._apply_car_readings()
+        self.async_update_listeners()
+
+    def _apply_car_readings(self) -> None:
+        """Layer the Bluetooth readings over the cloud data, dropping outdated ones."""
+        for device_id, (read_at, status) in list(self._car_readings.items()):
+            device = self.devices.get(device_id)
+            if not device or device.get("modelType") != "car":
+                del self._car_readings[device_id]
+            elif not apply_car_status(device, status, read_at):
+                _LOGGER.debug("The cloud has newer data for %s", device_id)
+                del self._car_readings[device_id]
+
     def _check_stale_devices(self) -> None:
         """Check for stale devices."""
         current_devices = set(self.devices)
@@ -166,6 +231,8 @@ class PuraDataUpdateCoordinator(
                 # schedule a refresh since we have a new device
                 await self.async_request_refresh()
             else:
+                # The update may carry older cloud values for a car read since
+                self._apply_car_readings()
                 self._check_stale_devices()
                 self.async_set_updated_data(self.devices)
 
@@ -175,6 +242,7 @@ class PuraDataUpdateCoordinator(
             devices = await self.hass.async_add_executor_job(self.api.get_devices)
             _LOGGER.debug("Devices updated")
             self.devices = devices
+            self._apply_car_readings()
             self._check_stale_devices()
             self._handle_success()
 

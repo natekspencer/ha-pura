@@ -23,6 +23,7 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
+from .car_bluetooth import async_setup_car_bluetooth
 from .const import CONF_ID_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
 from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
 from .services import async_setup_services
@@ -105,6 +106,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
     entry.runtime_data = PuraIntegrationData(coordinator, firmware_coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    async_setup_car_bluetooth(hass, entry, coordinator)
 
     @callback
     def _async_save_tokens(ev: Event) -> None:
