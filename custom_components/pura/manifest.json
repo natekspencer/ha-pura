@@ -1,6 +1,9 @@
 {
   "domain": "pura",
   "name": "Pura",
+  "after_dependencies": [
+    "bluetooth"
+  ],
   "codeowners": [
     "@natekspencer"
   ],
@@ -18,7 +21,7 @@
     "pypura"
   ],
   "requirements": [
-    "pypura==4.0.1",
+    "pypura==4.1.0",
     "ical"
   ],
   "version": "0.0.0"
