@@ -432,6 +432,48 @@ async def test_readings_saved_before_unload_returns(
     assert CAR_PRO_ID in _saved(hass_storage, entry)
 
 
+@pytest.mark.usefixtures("car")
+async def test_reading_during_unload_write_saved(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A reading that arrives while the unload is writing is saved too."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+
+    write = Store._async_write_data
+    key = f"pura.{entry.entry_id}.car_readings"
+    writing, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_write(store: Store, data: dict[str, Any]) -> None:
+        if store.key == key and not writing.is_set():
+            writing.set()
+            await release.wait()
+        await write(store, data)
+
+    with patch.object(Store, "_async_write_data", slow_write):
+        unload = hass.async_create_task(
+            hass.config_entries.async_unload(entry.entry_id)
+        )
+        await writing.wait()
+        newer = PuraCarStatus(**STATUS.__dict__ | {"battery_level": 70})
+        coordinator.async_set_car_status(CAR_PRO_ID, newer, time.time())
+        release.set()
+        assert await unload
+    assert _saved(hass_storage, entry)[CAR_PRO_ID]["battery_level"] == 70
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "70"
+
+
 @pytest.mark.usefixtures("mock_pura", "car")
 async def test_saved_readings_removed_with_entry(
     hass: HomeAssistant,
