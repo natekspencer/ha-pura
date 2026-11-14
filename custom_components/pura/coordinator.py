@@ -187,6 +187,11 @@ class PuraDataUpdateCoordinator(
 
         raise LookupError(f"Device {device_id!r} not found")
 
+    @property
+    def car_readings(self) -> dict[str, tuple[float, PuraCarStatus]]:
+        """Return the Bluetooth readings shown over the cloud data, with when each was read."""
+        return self._car_readings
+
     @callback
     def async_set_car_status(
         self, device_id: str, status: PuraCarStatus, read_at: float
@@ -226,6 +231,8 @@ class PuraDataUpdateCoordinator(
                 # schedule a refresh since we have a new device
                 await self.async_request_refresh()
             else:
+                # The update may carry older cloud values for a car read since
+                self._apply_car_readings()
                 self._check_stale_devices()
                 self.async_set_updated_data(self.devices)
 

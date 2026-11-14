@@ -16,6 +16,7 @@ import pytest
 
 from custom_components.pura import car_bluetooth
 from custom_components.pura.car_bluetooth import READ_INTERVAL
+from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -236,6 +237,62 @@ async def test_reading_kept_until_cloud_is_newer(
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert _state(hass, "battery") == "80"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_reading_kept_after_websocket_update(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A pushed update with older cloud data keeps the reading; newer replaces it."""
+    entry, discover = await _setup(hass, register)
+    coordinator = entry.runtime_data.coordinator
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    def push(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "deviceId": CAR_PRO_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": record,
+        }
+
+    await coordinator._async_handle_message(
+        push({"batteryRemaining": 45, "lastConnectedAt": CLOUD_AT})
+    )
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "90"
+
+    await coordinator._async_handle_message(
+        push({"batteryRemaining": 80, "lastConnectedAt": int(time.time()) + 60})
+    )
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "80"
+    assert CAR_PRO_ID not in coordinator.car_readings
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_diagnostics_show_reading(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """Diagnostics show a car's Bluetooth reading, with its MAC redacted."""
+    entry, discover = await _setup(hass, register)
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert "bluetooth" not in diagnostics[CAR_PRO_ID]
+
+    before = int(time.time())
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    reading = diagnostics[CAR_PRO_ID]["bluetooth"]
+    assert reading["readAt"] >= before
+    assert reading["mac"] == "**REDACTED**"
+    assert reading["battery_level"] == 90
+    assert reading["runtime"] == 192120
+    assert diagnostics[CAR_PRO_ID]["bay1"]["activeAt"] == reading["readAt"]
+    assert "bluetooth" not in diagnostics[HOME_V5_ID]
+    # The coordinator's data is left as is
+    assert "bluetooth" not in entry.runtime_data.coordinator.data[CAR_PRO_ID]
 
 
 async def _later(hass: HomeAssistant) -> None:
