@@ -19,7 +19,9 @@ from custom_components.pura.car_bluetooth import READ_INTERVAL
 from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.file import WriteError
 
 from . import MockConfigEntry, async_fire_time_changed, setup_integration
 from .conftest import CAR_PRO_ID, HOME_V5_ID
@@ -331,6 +333,42 @@ async def test_reading_kept_after_reload(
     await hass.async_block_till_done()
     assert _saved(hass_storage, entry) == {}
     assert _state(hass, "battery") == "45"
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_saved_on_reload_after_failed_write(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A delayed save that fails after building its data is retried on reload."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    write = Store._async_write_data
+
+    async def fail_once(store: Store, data: dict[str, Any]) -> None:
+        if not failed:
+            failed.append(data.pop("data_func")())
+            raise WriteError("disk full")
+        await write(store, data)
+
+    failed: list[dict[str, Any]] = []
+    with patch.object(Store, "_async_write_data", fail_once):
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
+        await hass.async_block_till_done()
+        assert failed
+        assert f"pura.{entry.entry_id}.car_readings" not in hass_storage
+
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+    assert _state(hass, "battery") == "90"
 
 
 @pytest.mark.usefixtures("mock_pura", "car")

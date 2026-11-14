@@ -154,7 +154,10 @@ class PuraDataUpdateCoordinator(
         # Bluetooth readings of cars, with when each was read
         self._car_readings: dict[str, tuple[float, PuraCarStatus]] = {}
         self._car_readings_store = car_readings_store(hass, config_entry.entry_id)
-        self._car_readings_unsaved = False
+        # Whether the readings changed since they were loaded. A delayed save can
+        # still be writing, or have failed, so this stays set until the unload
+        # writes them for certain.
+        self._car_readings_changed = False
 
         self._init_jitter_backoff(config_entry)
 
@@ -216,7 +219,6 @@ class PuraDataUpdateCoordinator(
                 _LOGGER.debug("Ignoring a saved reading of %s: %s", device_id, reading)
 
     def _car_readings_data(self) -> dict[str, Any]:
-        self._car_readings_unsaved = False
         return {
             device_id: {"read_at": read_at, **asdict(status)}
             for device_id, (read_at, status) in self._car_readings.items()
@@ -224,15 +226,20 @@ class PuraDataUpdateCoordinator(
 
     @callback
     def _async_save_car_readings(self) -> None:
-        self._car_readings_unsaved = True
+        self._car_readings_changed = True
         self._car_readings_store.async_delay_save(
             self._car_readings_data, CAR_READINGS_SAVE_DELAY
         )
 
     async def async_flush_car_readings(self) -> None:
-        """Save the readings now if they changed, as before a reload."""
-        if self._car_readings_unsaved:
+        """Save the readings now if they changed, as before a reload or removal.
+
+        The save waits for any write still in progress, then writes the latest
+        readings and cancels the pending one, so nothing is written after it.
+        """
+        if self._car_readings_changed:
             await self._car_readings_store.async_save(self._car_readings_data())
+            self._car_readings_changed = False
 
     @callback
     def async_set_car_status(
