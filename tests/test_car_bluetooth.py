@@ -14,7 +14,7 @@ from pypura import PuraBluetoothError
 from pypura.car_ble import PuraCarStatus
 import pytest
 
-from custom_components.pura import car_bluetooth
+from custom_components.pura import async_unload_entry, car_bluetooth
 from custom_components.pura.car_bluetooth import READ_INTERVAL
 from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import Platform
@@ -398,6 +398,38 @@ async def test_saved_reading_loaded(
 
     assert _state(hass, "battery") == "90"
     assert list(entry.runtime_data.coordinator.car_readings) == [CAR_PRO_ID]
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_readings_saved_before_unload_returns(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    register: MagicMock,
+    read_car: AsyncMock,
+) -> None:
+    """The unload itself saves the readings, and nothing is written after it."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+
+    assert await async_unload_entry(hass, entry)
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+
+    # A pushed update arriving before the websocket stops drops the reading,
+    # but doesn't write again
+    await coordinator._async_handle_message(
+        {
+            "deviceId": CAR_PRO_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": {"lastConnectedAt": int(time.time()) + 60},
+        }
+    )
+    assert CAR_PRO_ID not in coordinator.car_readings
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
+    await hass.async_block_till_done()
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
 
 
 @pytest.mark.usefixtures("mock_pura", "car")

@@ -158,6 +158,8 @@ class PuraDataUpdateCoordinator(
         # still be writing, or have failed, so this stays set until the unload
         # writes them for certain.
         self._car_readings_changed = False
+        # Set once the unload saved them, after which nothing more is written
+        self._car_readings_closed = False
 
         self._init_jitter_backoff(config_entry)
 
@@ -226,6 +228,8 @@ class PuraDataUpdateCoordinator(
 
     @callback
     def _async_save_car_readings(self) -> None:
+        if self._car_readings_closed:
+            return
         self._car_readings_changed = True
         self._car_readings_store.async_delay_save(
             self._car_readings_data, CAR_READINGS_SAVE_DELAY
@@ -235,8 +239,10 @@ class PuraDataUpdateCoordinator(
         """Save the readings now if they changed, as before a reload or removal.
 
         The save waits for any write still in progress, then writes the latest
-        readings and cancels the pending one, so nothing is written after it.
+        readings and cancels the pending one. Nothing is written after it, so the
+        file can be removed safely.
         """
+        self._car_readings_closed = True
         if self._car_readings_changed:
             await self._car_readings_store.async_save(self._car_readings_data())
             self._car_readings_changed = False
