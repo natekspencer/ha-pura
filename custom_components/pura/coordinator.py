@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 from datetime import timedelta
 import logging
 import random
@@ -17,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import (
     ConfigEntryAuthFailed,
     DataUpdateCoordinator,
@@ -33,6 +35,14 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+CAR_READINGS_VERSION = 1
+CAR_READINGS_SAVE_DELAY = 10
+
+
+def car_readings_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store that keeps a config entry's car readings across restarts."""
+    return Store(hass, CAR_READINGS_VERSION, f"{DOMAIN}.{entry_id}.car_readings")
 
 
 def apply_car_status(
@@ -143,6 +153,8 @@ class PuraDataUpdateCoordinator(
         self.devices: dict[str, dict[str, Any]] = {}
         # Bluetooth readings of cars, with when each was read
         self._car_readings: dict[str, tuple[float, PuraCarStatus]] = {}
+        self._car_readings_store = car_readings_store(hass, config_entry.entry_id)
+        self._car_readings_unsaved = False
 
         self._init_jitter_backoff(config_entry)
 
@@ -192,6 +204,36 @@ class PuraDataUpdateCoordinator(
         """Return the Bluetooth readings shown over the cloud data, with when each was read."""
         return self._car_readings
 
+    async def async_load_car_readings(self) -> None:
+        """Load the readings saved before a restart, so the cars don't show older cloud data."""
+        stored = await self._car_readings_store.async_load() or {}
+        for device_id, reading in stored.items():
+            try:
+                fields = dict(reading)
+                read_at = float(fields.pop("read_at"))
+                self._car_readings[device_id] = (read_at, PuraCarStatus(**fields))
+            except (AttributeError, KeyError, TypeError, ValueError):
+                _LOGGER.debug("Ignoring a saved reading of %s: %s", device_id, reading)
+
+    def _car_readings_data(self) -> dict[str, Any]:
+        self._car_readings_unsaved = False
+        return {
+            device_id: {"read_at": read_at, **asdict(status)}
+            for device_id, (read_at, status) in self._car_readings.items()
+        }
+
+    @callback
+    def _async_save_car_readings(self) -> None:
+        self._car_readings_unsaved = True
+        self._car_readings_store.async_delay_save(
+            self._car_readings_data, CAR_READINGS_SAVE_DELAY
+        )
+
+    async def async_flush_car_readings(self) -> None:
+        """Save the readings now if they changed, as before a reload."""
+        if self._car_readings_unsaved:
+            await self._car_readings_store.async_save(self._car_readings_data())
+
     @callback
     def async_set_car_status(
         self, device_id: str, status: PuraCarStatus, read_at: float
@@ -199,17 +241,23 @@ class PuraDataUpdateCoordinator(
         """Show a car's Bluetooth reading until the cloud has newer data."""
         self._car_readings[device_id] = (read_at, status)
         self._apply_car_readings()
+        self._async_save_car_readings()
         self.async_update_listeners()
 
     def _apply_car_readings(self) -> None:
         """Layer the Bluetooth readings over the cloud data, dropping outdated ones."""
+        dropped = False
         for device_id, (read_at, status) in list(self._car_readings.items()):
             device = self.devices.get(device_id)
             if not device or device.get("modelType") != "car":
                 del self._car_readings[device_id]
+                dropped = True
             elif not apply_car_status(device, status, read_at):
                 _LOGGER.debug("The cloud has newer data for %s", device_id)
                 del self._car_readings[device_id]
+                dropped = True
+        if dropped:
+            self._async_save_car_readings()
 
     def _check_stale_devices(self) -> None:
         """Check for stale devices."""

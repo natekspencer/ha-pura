@@ -295,6 +295,89 @@ async def test_diagnostics_show_reading(
     assert "bluetooth" not in entry.runtime_data.coordinator.data[CAR_PRO_ID]
 
 
+def _saved(hass_storage: dict[str, Any], entry: MockConfigEntry) -> dict[str, Any]:
+    return hass_storage[f"pura.{entry.entry_id}.car_readings"]["data"]
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_kept_after_reload(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A reading is saved, and still shown after a reload until the cloud is newer."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    saved = _saved(hass_storage, entry)[CAR_PRO_ID]
+    assert saved["battery_level"] == 90
+    assert saved["mac"] == "AAAAAAAAAA04"
+    assert _state(hass, "battery") == "90"
+    assert _state(hass, "fan_intensity") == "high"
+
+    # The cloud catches up, and the saved reading is dropped
+    devices[CAR_PRO_ID]["lastConnectedAt"] = int(time.time()) + 60
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "45"
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _saved(hass_storage, entry) == {}
+    assert _state(hass, "battery") == "45"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_saved_reading_loaded(
+    hass: HomeAssistant, hass_storage: dict[str, Any], register: MagicMock
+) -> None:
+    """A reading saved before a restart is shown; an unreadable one is ignored."""
+    entry = MockConfigEntry(
+        domain="pura", unique_id="pura", data={"username": "user@example.com"}
+    )
+    hass_storage[f"pura.{entry.entry_id}.car_readings"] = {
+        "version": 1,
+        "key": f"pura.{entry.entry_id}.car_readings",
+        "data": {
+            CAR_PRO_ID: {"read_at": time.time() - 60, **STATUS.__dict__},
+            "aa:aa:aa:aa:aa:99": {"read_at": time.time(), "battery": 1},
+        },
+    }
+    entry.add_to_hass(hass)
+    hass.config.components.add("bluetooth")
+    with patch("custom_components.pura.PLATFORMS", [Platform.SENSOR]):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert _state(hass, "battery") == "90"
+    assert list(entry.runtime_data.coordinator.car_readings) == [CAR_PRO_ID]
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_saved_readings_removed_with_entry(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    register: MagicMock,
+    read_car: AsyncMock,
+) -> None:
+    """Removing the config entry deletes its saved readings."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_unload(entry.entry_id)
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert f"pura.{entry.entry_id}.car_readings" not in hass_storage
+
+
 async def _later(hass: HomeAssistant) -> None:
     """Move past READ_INTERVAL."""
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=READ_INTERVAL))
