@@ -115,7 +115,7 @@ A single **Pura** calendar entity also shows the schedules for all of your devic
 
 ### Car diffusers over Bluetooth
 
-Car diffusers only send their status to Pura's cloud when you open the Pura app near them, so their battery, fan intensity, fragrance and runtime can be out of date. If Home Assistant has [Bluetooth](https://www.home-assistant.io/integrations/bluetooth/) set up, with an adapter or an [ESPHome Bluetooth proxy](https://esphome.io/components/bluetooth_proxy.html) in range of where you park, the integration also reads your cars directly while they're on, at most every 5 minutes. Nothing is sent to Pura. A car only accepts connections while it's on, and its readings are kept until the cloud has newer data. A new fragrance shows its code, e.g. `Unknown (NDMH)`, until the Pura app syncs its name.
+Car diffusers only send their status to Pura's cloud when you open the Pura app near them, so their battery, fan intensity, fragrance and runtime can be out of date. If Home Assistant has [Bluetooth](https://www.home-assistant.io/integrations/bluetooth/) set up, with an adapter or an [ESPHome Bluetooth proxy](https://esphome.io/components/bluetooth_proxy.html) in range of where you park, the integration also reads your cars directly while they're on, when they come into range and then every 5 minutes. Nothing is sent to Pura. A car only accepts connections while it's on, and its readings are kept until the cloud has newer data. A new fragrance shows its code, e.g. `Unknown (NDMH)`, until the Pura app syncs its name.
 
 ## 🎛️ Dashboard card
 

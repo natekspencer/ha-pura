@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Generator
 import copy
+from datetime import timedelta
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,8 +18,9 @@ from custom_components.pura import car_bluetooth
 from custom_components.pura.car_bluetooth import READ_INTERVAL
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
-from . import MockConfigEntry, setup_integration
+from . import MockConfigEntry, async_fire_time_changed, setup_integration
 from .conftest import CAR_PRO_ID, HOME_V5_ID
 
 ADDRESS = "AA:AA:AA:AA:AA:04"  # CAR_PRO_ID
@@ -74,7 +76,16 @@ def read_car() -> Generator[AsyncMock]:
 
 
 @pytest.fixture
-def register() -> Generator[MagicMock]:
+def present() -> Generator[MagicMock]:
+    """Mock whether a car is still in range, which it is by default."""
+    with patch.object(
+        car_bluetooth.bluetooth, "async_address_present", return_value=True
+    ) as present:
+        yield present
+
+
+@pytest.fixture
+def register(present: MagicMock) -> Generator[MagicMock]:
     """Mock Home Assistant's Bluetooth callbacks."""
     with (
         patch.object(
@@ -227,24 +238,52 @@ async def test_reading_kept_until_cloud_is_newer(
     assert _state(hass, "battery") == "80"
 
 
+async def _later(hass: HomeAssistant) -> None:
+    """Move past READ_INTERVAL."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=READ_INTERVAL))
+    await hass.async_block_till_done()
+
+
 @pytest.mark.usefixtures("mock_pura", "car")
-async def test_read_at_most_every_interval(
-    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+async def test_read_again_while_in_range(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock, present: MagicMock
 ) -> None:
-    """A car that keeps advertising is only read every READ_INTERVAL."""
+    """A car still in range is read every READ_INTERVAL, without new advertisements."""
     _, discover = await _setup(hass, register)
-    with patch.object(car_bluetooth.time, "monotonic", return_value=1000.0):
-        discover(ADDRESS)
-        await hass.async_block_till_done()
-        discover(ADDRESS)
-        await hass.async_block_till_done()
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    # Advertisements before the next read are ignored
+    discover(ADDRESS)
+    await hass.async_block_till_done()
     assert read_car.await_count == 1
 
-    with patch.object(
-        car_bluetooth.time, "monotonic", return_value=1000.0 + READ_INTERVAL
-    ):
-        discover(ADDRESS)
-        await hass.async_block_till_done()
+    read_car.return_value = PuraCarStatus(**STATUS.__dict__ | {"battery_level": 80})
+    await _later(hass)
+    assert read_car.await_count == 2
+    assert _state(hass, "battery") == "80"
+    present.assert_called_with(hass, ADDRESS, connectable=True)
+
+    await _later(hass)
+    assert read_car.await_count == 3
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_not_read_again_out_of_range(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock, present: MagicMock
+) -> None:
+    """A car that left isn't read again until it's seen again."""
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    present.return_value = False
+    await _later(hass)
+    await _later(hass)
+    assert read_car.await_count == 1
+
+    present.return_value = True
+    discover(ADDRESS)
+    await hass.async_block_till_done()
     assert read_car.await_count == 2
 
 
@@ -255,20 +294,15 @@ async def test_failed_read(
     """A car that can't be read keeps its cloud data, and is retried later."""
     read_car.side_effect = PuraBluetoothError("No reply to command 1")
     _, discover = await _setup(hass, register)
-    with patch.object(car_bluetooth.time, "monotonic", return_value=1000.0):
-        discover(ADDRESS)
-        await hass.async_block_till_done()
-        discover(ADDRESS)
-        await hass.async_block_till_done()
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    discover(ADDRESS)
+    await hass.async_block_till_done()
     assert read_car.await_count == 1
     assert _state(hass, "battery") == "45"
 
     read_car.side_effect = None
-    with patch.object(
-        car_bluetooth.time, "monotonic", return_value=1000.0 + READ_INTERVAL
-    ):
-        discover(ADDRESS)
-        await hass.async_block_till_done()
+    await _later(hass)
     assert _state(hass, "battery") == "90"
 
 
@@ -285,12 +319,11 @@ async def test_read_in_progress(
 
     read_car.side_effect = slow_read
     _, discover = await _setup(hass, register)
-    with patch.object(car_bluetooth, "READ_INTERVAL", 0):
-        discover(ADDRESS)
-        await asyncio.sleep(0)
-        discover(ADDRESS)
-        release.set()
-        await hass.async_block_till_done()
+    discover(ADDRESS)
+    await asyncio.sleep(0)
+    discover(ADDRESS)
+    release.set()
+    await hass.async_block_till_done()
     assert read_car.await_count == 1
     assert _state(hass, "battery") == "90"
 
@@ -347,8 +380,15 @@ async def test_without_bluetooth(hass: HomeAssistant, register: MagicMock) -> No
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
-async def test_unload_stops_listening(hass: HomeAssistant, register: MagicMock) -> None:
-    """Unloading the entry removes the Bluetooth callback."""
-    entry, _ = await _setup(hass, register)
+async def test_unload_stops_listening(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """Unloading the entry removes the Bluetooth callback and the next read."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
     await hass.config_entries.async_unload(entry.entry_id)
     register.return_value.assert_called_once()
+    # Nor is the car read again
+    await _later(hass)
+    assert read_car.await_count == 1
