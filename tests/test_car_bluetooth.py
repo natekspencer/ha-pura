@@ -351,9 +351,12 @@ async def test_reading_saved_on_reload_after_failed_write(
     await hass.async_block_till_done()
 
     write = Store._async_write_data
+    key = f"pura.{entry.entry_id}.car_readings"
 
     async def fail_once(store: Store, data: dict[str, Any]) -> None:
-        if not failed:
+        # Other stores, like the registries, may write meanwhile
+        if store.key == key and not failed:
+            # Like a real failure, after the delayed save built its data
             failed.append(data.pop("data_func")())
             raise WriteError("disk full")
         await write(store, data)
@@ -362,8 +365,8 @@ async def test_reading_saved_on_reload_after_failed_write(
     with patch.object(Store, "_async_write_data", fail_once):
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
         await hass.async_block_till_done()
-        assert failed
-        assert f"pura.{entry.entry_id}.car_readings" not in hass_storage
+        assert CAR_PRO_ID in failed[0]
+        assert key not in hass_storage
 
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
