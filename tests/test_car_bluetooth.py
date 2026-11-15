@@ -175,10 +175,16 @@ def _car_lookups(pura: MagicMock) -> list[str]:
 
 @pytest.mark.usefixtures("car")
 async def test_new_fragrance(
-    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    register: MagicMock,
+    read_car: AsyncMock,
 ) -> None:
     """A new fragrance's details are looked up by its code."""
     mock_pura.get_fragrance.return_value = NEW_FRAGRANCE
+    # Each poll gets the cloud's pod again, without the reading's
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
     read_car.return_value = NEW_POD
     entry, discover = await _setup(hass, register)
     discover(ADDRESS)
