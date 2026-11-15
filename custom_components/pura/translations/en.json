@@ -193,7 +193,13 @@
         "name": "Fragrance remaining"
       },
       "intensity": {
-        "name": "Fan intensity"
+        "name": "Fan intensity",
+        "state": {
+          "off": "Off",
+          "low": "Subtle",
+          "medium": "Medium",
+          "high": "Strong"
+        }
       },
       "last_active": {
         "name": "Last active"

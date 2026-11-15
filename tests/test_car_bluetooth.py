@@ -10,7 +10,7 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pypura import PuraBluetoothError
+from pypura import PuraApiException, PuraBluetoothError
 from pypura.car_ble import PuraCarStatus
 import pytest
 
@@ -153,22 +153,86 @@ async def test_reading_updates_car(
     assert coordinator.devices[CAR_PRO_ID]["fwVersion"] == "9.1.16"
 
 
-@pytest.mark.usefixtures("mock_pura", "car")
+NEW_POD = PuraCarStatus(
+    **STATUS.__dict__ | {"fragrance_code": "NDMH", "cartridge_id": "pod-2"}
+)
+NEW_FRAGRANCE = {
+    "fragranceCode": "NDMH",
+    "fragranceFormat": "puck",
+    "name": "Midnight Hour",
+    "expectedLifeHours": 60,
+}
+
+
+def _car_lookups(pura: MagicMock) -> list[str]:
+    """Return the codes looked up as car pods, leaving out the Home v5's vials."""
+    return [
+        call.args[0]
+        for call in pura.get_fragrance.call_args_list
+        if call.kwargs["fragrance_format"] == "puck"
+    ]
+
+
+@pytest.mark.usefixtures("car")
 async def test_new_fragrance(
-    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
 ) -> None:
-    """A new fragrance shows its code until the cloud has its name."""
-    read_car.return_value = PuraCarStatus(
-        **STATUS.__dict__ | {"fragrance_code": "NDMH", "cartridge_id": "pod-2"}
-    )
+    """A new fragrance's details are looked up by its code."""
+    mock_pura.get_fragrance.return_value = NEW_FRAGRANCE
+    read_car.return_value = NEW_POD
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    assert _car_lookups(mock_pura) == ["NDMH"]
+    assert _state(hass, "fragrance") == "Midnight Hour"
+    # 192120 seconds of a 60 hour pod
+    assert float(_state(hass, "fragrance_remaining")) == pytest.approx(11.1, abs=0.1)
+    bay = entry.runtime_data.coordinator.devices[CAR_PRO_ID]["bay1"]
+    assert bay["lowFragrance"] is False
+
+    # It's remembered, and shown again after the cloud's older data
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _state(hass, "fragrance") == "Midnight Hour"
+    assert _car_lookups(mock_pura) == ["NDMH"]
+
+
+@pytest.mark.usefixtures("car")
+async def test_new_fragrance_not_found(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A code with no fragrance shows the code, and isn't looked up again."""
+    read_car.return_value = NEW_POD
     entry, discover = await _setup(hass, register)
     discover(ADDRESS)
     await hass.async_block_till_done()
 
     assert _state(hass, "fragrance") == "Unknown (NDMH)"
-    bay = entry.runtime_data.coordinator.devices[CAR_PRO_ID]["bay1"]
-    assert bay["lowFragrance"] is False
-    assert "fragrance" not in bay
+    assert "fragrance" not in entry.runtime_data.coordinator.devices[CAR_PRO_ID]["bay1"]
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _car_lookups(mock_pura) == ["NDMH"]
+
+
+@pytest.mark.usefixtures("car")
+async def test_new_fragrance_lookup_fails(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A failed lookup shows the code, and is tried again on the next update."""
+    mock_pura.get_fragrance.side_effect = PuraApiException("Request failed")
+    read_car.return_value = NEW_POD
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert _state(hass, "fragrance") == "Unknown (NDMH)"
+
+    mock_pura.get_fragrance.side_effect = None
+    mock_pura.get_fragrance.return_value = NEW_FRAGRANCE
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _car_lookups(mock_pura) == ["NDMH", "NDMH"]
+    assert _state(hass, "fragrance") == "Midnight Hour"
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
@@ -205,6 +269,120 @@ async def test_pod_removed(
 
     assert _state(hass, "fragrance") == "unavailable"
     assert _state(hass, "battery") == "90"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_reading_without_battery(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A car without a battery (v1) leaves the cloud's battery value alone."""
+    read_car.return_value = PuraCarStatus(
+        **STATUS.__dict__ | {"battery_level": None, "charging": None}
+    )
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    assert _state(hass, "battery") == "45"
+    assert _state(hass, "fan_intensity") == "high"
+
+
+UNKNOWN_POD = PuraCarStatus(
+    **STATUS.__dict__
+    | {
+        "intensity": "medium",
+        "fragrance_code": None,
+        "cartridge_id": None,
+        "runtime": None,
+        "unknown_pod": True,
+    }
+)
+
+
+def _assert_unknown_pod(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    """The car shows a pod it can't identify, as the app does, with no runtime."""
+    assert _state(hass, "fragrance") == "Unknown (UKNC)"
+    assert _state(hass, "runtime") == "unknown"
+    assert _state(hass, "fragrance_remaining") == "unknown"
+    assert _state(hass, "fan_intensity") == "medium"
+    assert _state(hass, "battery") == "90"
+    bay = entry.runtime_data.coordinator.devices[CAR_PRO_ID]["bay1"]
+    assert bay["lowFragrance"] is False
+    assert bay["activeAt"] > CLOUD_AT
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_unknown_pod_replaces_cloud_pod(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A newer reading of a pod the car can't identify replaces the cloud's pod."""
+    read_car.return_value = UNKNOWN_POD
+    entry, discover = await _setup(hass, register)
+    assert _state(hass, "fragrance") == "Fresh Sea Salt"
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    _assert_unknown_pod(hass, entry)
+
+
+@pytest.mark.usefixtures("car")
+async def test_unknown_pod_looked_up(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A pod the car can't identify shows the API's "Unknown fragrance", still with
+    no runtime or fragrance remaining, though the API gives it an expected life."""
+    mock_pura.get_fragrance.return_value = {
+        "fragranceCode": "UKNC",
+        "fragranceFormat": "puck",
+        "name": "Unknown fragrance",
+        "expectedLifeHours": 30,
+    }
+    read_car.return_value = UNKNOWN_POD
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    assert _car_lookups(mock_pura) == ["UKNC"]
+    assert _state(hass, "fragrance") == "Unknown fragrance"
+    assert _state(hass, "runtime") == "unknown"
+    assert _state(hass, "fragrance_remaining") == "unknown"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_unknown_pod_replaces_last_reading(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A pod the car can't identify replaces the pod from its last reading too."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert float(_state(hass, "runtime")) == pytest.approx(192120 / 3600, abs=0.01)
+
+    read_car.return_value = UNKNOWN_POD
+    await _later(hass)
+
+    assert read_car.await_count == 2
+    _assert_unknown_pod(hass, entry)
+    _, status = entry.runtime_data.coordinator.car_readings[CAR_PRO_ID]
+    assert status == UNKNOWN_POD
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_unknown_pod_without_cloud_pod(
+    hass: HomeAssistant,
+    register: MagicMock,
+    read_car: AsyncMock,
+    car: dict[str, Any],
+) -> None:
+    """A pod the car can't identify shows even when the cloud has no pod."""
+    car["bay1"] = None
+    read_car.return_value = UNKNOWN_POD
+    entry, discover = await _setup(hass, register)
+    assert _state(hass, "fragrance") == "unavailable"
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    _assert_unknown_pod(hass, entry)
 
 
 @pytest.mark.usefixtures("car")
@@ -616,15 +794,18 @@ async def test_car_no_longer_connectable(
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
-async def test_different_mac_ignored(
+async def test_different_mac_applied(
     hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
 ) -> None:
-    """A reading from a car reporting another MAC isn't applied."""
-    read_car.return_value = PuraCarStatus(**STATUS.__dict__ | {"mac": "BBBBBBBBBB04"})
+    """A car is matched by its Bluetooth address, whatever MAC it reports.
+
+    A v1 reports its chip's base MAC, which differs from its Bluetooth MAC.
+    """
+    read_car.return_value = PuraCarStatus(**STATUS.__dict__ | {"mac": "AAAAAAAAAA02"})
     _, discover = await _setup(hass, register)
     discover(ADDRESS)
     await hass.async_block_till_done()
-    assert _state(hass, "battery") == "45"
+    assert _state(hass, "battery") == "90"
 
 
 @pytest.mark.usefixtures("mock_pura", "car")

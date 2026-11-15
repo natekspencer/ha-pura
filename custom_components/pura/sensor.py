@@ -8,6 +8,7 @@ from datetime import datetime
 import re
 from typing import Any
 
+from pypura.car_ble import CAR_INTENSITIES
 from pypura.utils import dig, get_fragrance_name, get_fragrance_remaining, has_fragrance
 
 from homeassistant.components.sensor import (
@@ -56,6 +57,18 @@ class PuraSensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[dict], Any | None]
     # Identifies the vial a runtime belongs to, so it doesn't drop for the same vial
     vial_fn: Callable[[dict], Any] | None = None
+
+
+def _fragrance_remaining(data: dict[str, Any], bay: int) -> float | None:
+    """Get the fragrance remaining, or None if the runtime it's worked out from is.
+
+    A car pod it can't identify has no runtime, which would otherwise count as
+    none used, showing a pod nothing is known about as full.
+    """
+    bay_data = data.get(f"bay{bay}") or {}
+    if "wearingTime" in bay_data and bay_data["wearingTime"] is None:
+        return None
+    return get_fragrance_remaining(data, bay)
 
 
 def _bay_sensors(bay: int) -> tuple[PuraSensorEntityDescription, ...]:
@@ -109,9 +122,16 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
         PuraSensorEntityDescription(
             key="intensity",
             translation_key="intensity",
+            device_class=SensorDeviceClass.ENUM,
+            options=list(CAR_INTENSITIES),
             entity_category=EntityCategory.DIAGNOSTIC,
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: data["bay1"]["fanIntensity"],
+            # An enum sensor rejects other values, so show those as unknown
+            value_fn=lambda data: (
+                intensity
+                if (intensity := data["bay1"]["fanIntensity"]) in CAR_INTENSITIES
+                else None
+            ),
         ),
         PuraSensorEntityDescription(
             key="last_active",
@@ -140,7 +160,7 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=0,
             available_fn=lambda data: has_fragrance(data, 1),
-            value_fn=lambda data: get_fragrance_remaining(data, 1),
+            value_fn=lambda data: _fragrance_remaining(data, 1),
         ),
         PuraSensorEntityDescription(
             key="runtime",

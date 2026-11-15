@@ -84,9 +84,6 @@ def async_setup_car_bluetooth(
         finally:
             reading.discard(device_id)
             _async_schedule_read(device_id, address)
-        if _normalize(status.mac) != _normalize(device_id):
-            _LOGGER.debug("%s reported a different MAC: %s", device_id, status.mac)
-            return
         _LOGGER.debug("Read %s over Bluetooth: %s", device_id, status)
         coordinator.async_set_car_status(device_id, status, time.time())
 

@@ -22,3 +22,6 @@ ATTR_SLOT: Final = "slot"
 BAYS: Final = (1, 2, 3, 4)
 ATTR_INTENSITY: Final = "intensity"
 ATTR_DURATION: Final = "duration"
+
+# The app's code for a car pod it can't identify
+UNKNOWN_FRAGRANCE_CODE: Final = "UKNC"

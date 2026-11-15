@@ -143,6 +143,7 @@ def mock_pura(devices: dict[str, dict[str, Any]]) -> Generator[MagicMock]:
         client.get_devices.return_value = devices
         client.get_tokens.return_value = {"id_token": "id-token"}
         client.get_latest_firmware_details.return_value = {}
+        client.get_fragrance.return_value = None
         client.set_away_mode.return_value = True
         subscriber = subscriber_cls.return_value
         subscriber.is_running = True
