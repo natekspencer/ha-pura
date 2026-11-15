@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from datetime import timedelta
+from functools import partial
 import logging
 import random
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
-from pypura import Pura, PuraAuthenticationError
+from pypura import Pura, PuraApiException, PuraAuthenticationError
 from pypura.car_ble import PuraCarStatus
 from pypura.utils import dig, merge_websocket_update
 from pypura.ws_subscriber import WebSocketSubscriber
@@ -27,14 +28,18 @@ from homeassistant.helpers.update_coordinator import (
 
 from .const import (
     BACKOFF_MULTIPLIER,
+    BAYS,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     MAX_JITTER,
     MIN_MAX_BACKOFF,
+    UNKNOWN_FRAGRANCE_CODE,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+type FragranceFormat = Literal["puck", "vial"]
 
 CAR_READINGS_VERSION = 1
 CAR_READINGS_SAVE_DELAY = 10
@@ -59,8 +64,20 @@ def apply_car_status(
     if cloud_at >= read_at:
         return False
 
-    device["batteryRemaining"] = status.battery_level
+    if status.battery_level is not None:  # a Car v1 has no battery
+        device["batteryRemaining"] = status.battery_level
     device["fwVersion"] = status.firmware
+    if status.unknown_pod:
+        # The car can't tell which pod it has, so neither can the cloud or an
+        # earlier reading. Show it as the app does, without a runtime.
+        device["bay1"] = {
+            "code": UNKNOWN_FRAGRANCE_CODE,
+            "fanIntensity": status.intensity,
+            "lowFragrance": False,
+            "wearingTime": None,
+            "activeAt": int(read_at),
+        }
+        return True
     if status.fragrance_code is None:
         device["bay1"] = None
         return True
@@ -160,6 +177,9 @@ class PuraDataUpdateCoordinator(
         self._car_readings_changed = False
         # Set once the unload starts saving them, after which only it writes
         self._car_readings_closing = False
+        # Fragrances looked up by format and code, None if there's no such code
+        self._fragrances: dict[tuple[FragranceFormat, str], dict[str, Any] | None] = {}
+        self._fragrance_lookups: set[tuple[FragranceFormat, str]] = set()
 
         self._init_jitter_backoff(config_entry)
 
@@ -272,6 +292,59 @@ class PuraDataUpdateCoordinator(
                 dropped = True
         if dropped:
             self._async_save_car_readings()
+        self._fill_fragrances()
+
+    def _fill_fragrances(self) -> None:
+        """Add the details of fragrances known only by their code.
+
+        A car's Bluetooth reading only has the pod's code, and the cloud can lack
+        a fragrance's details too. Codes not looked up yet are looked up in the
+        background, as the app does. That includes UNKNOWN_FRAGRANCE_CODE, which
+        the API has as "Unknown fragrance".
+        """
+        for device in self.devices.values():
+            fragrance_format: FragranceFormat = (
+                "puck" if device.get("modelType") == "car" else "vial"
+            )
+            for number in BAYS:
+                bay = device.get(f"bay{number}")
+                if (
+                    not isinstance(bay, dict)
+                    or bay.get("fragrance")
+                    or not (code := bay.get("code"))
+                ):
+                    continue
+                key = (fragrance_format, code)
+                if key in self._fragrances:
+                    if fragrance := self._fragrances[key]:
+                        bay["fragrance"] = fragrance
+                elif key not in self._fragrance_lookups and self.config_entry:
+                    self._fragrance_lookups.add(key)
+                    self.config_entry.async_create_background_task(
+                        self.hass,
+                        self._async_look_up_fragrance(key),
+                        f"{DOMAIN} look up fragrance {code}",
+                    )
+
+    async def _async_look_up_fragrance(self, key: tuple[FragranceFormat, str]) -> None:
+        """Look up a fragrance by its code, then show it on the bays that have it."""
+        fragrance_format, code = key
+        try:
+            fragrance = await self.hass.async_add_executor_job(
+                partial(self.api.get_fragrance, code, fragrance_format=fragrance_format)
+            )
+        except PuraApiException as err:
+            # Not remembered, so the next update tries again
+            _LOGGER.debug("Couldn't look up fragrance %s: %s", code, err)
+            return
+        finally:
+            self._fragrance_lookups.discard(key)
+        self._fragrances[key] = fragrance
+        if fragrance:
+            self._fill_fragrances()
+            self.async_update_listeners()
+        else:
+            _LOGGER.debug("No %s fragrance has the code %s", fragrance_format, code)
 
     def _check_stale_devices(self) -> None:
         """Check for stale devices."""

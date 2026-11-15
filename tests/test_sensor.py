@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from . import MockConfigEntry, mock_restore_cache_with_extra_data, setup_integration
-from .conftest import HOME_MINI_ID, HOME_V5_ID
+from .conftest import CAR_PRO_ID, HOME_MINI_ID, HOME_V5_ID
 
 # TODO: Remove the migration tests along with _async_migrate_entities after April 2027
 OLD_UNIQUE_ID = f"{HOME_MINI_ID}-bay_1_installed"
@@ -404,6 +404,47 @@ async def test_luxe_sensors(
     )
     assert hass.states.get("sensor.home_luxe_slot_3_fragrance").state == "unavailable"
     assert hass.states.get("sensor.home_luxe_controller").state == "default"
+
+
+async def test_vial_details_looked_up(
+    hass: HomeAssistant, mock_pura: MagicMock, mini_only: dict[str, dict[str, Any]]
+) -> None:
+    """Test a vial known only by its code gets its details from its code."""
+    del mini_only[HOME_MINI_ID]["bay1"]["fragrance"]
+    mock_pura.get_fragrance.return_value = {"fragranceCode": "NDMH", "name": "Volcano"}
+    await setup_integration(hass, [Platform.SENSOR])
+    await hass.async_block_till_done()
+
+    mock_pura.get_fragrance.assert_called_once_with("NDMH", fragrance_format="vial")
+    assert hass.states.get("sensor.home_mini_fragrance").state == "Volcano"
+
+
+@pytest.mark.parametrize(
+    ("intensity", "expected"),
+    [("off", "off"), ("low", "low"), ("high", "high"), ("turbo", "unknown")],
+)
+async def test_car_intensity(
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    intensity: str,
+    expected: str,
+) -> None:
+    """Test the car's intensity is an enum, showing other values as unknown."""
+    devices[CAR_PRO_ID]["bay1"] |= {
+        "activeAt": 1700000000,
+        "fanIntensity": intensity,
+        "wearingTime": 3600,
+        "fragrance": {"name": "Volcano"},
+    }
+    for device_id in list(devices):
+        if device_id != CAR_PRO_ID:
+            del devices[device_id]
+    await setup_integration(hass, [Platform.SENSOR])
+
+    state = hass.states.get("sensor.car_pro_fan_intensity")
+    assert state.state == expected
+    assert state.attributes["options"] == ["off", "low", "medium", "high"]
 
 
 async def test_two_slot_devices_have_no_third_slot(
