@@ -14,12 +14,14 @@ from pypura import PuraBluetoothError
 from pypura.car_ble import PuraCarStatus
 import pytest
 
-from custom_components.pura import car_bluetooth
+from custom_components.pura import async_unload_entry, car_bluetooth
 from custom_components.pura.car_bluetooth import READ_INTERVAL
 from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.file import WriteError
 
 from . import MockConfigEntry, async_fire_time_changed, setup_integration
 from .conftest import CAR_PRO_ID, HOME_V5_ID
@@ -293,6 +295,202 @@ async def test_diagnostics_show_reading(
     assert "bluetooth" not in diagnostics[HOME_V5_ID]
     # The coordinator's data is left as is
     assert "bluetooth" not in entry.runtime_data.coordinator.data[CAR_PRO_ID]
+
+
+def _saved(hass_storage: dict[str, Any], entry: MockConfigEntry) -> dict[str, Any]:
+    return hass_storage[f"pura.{entry.entry_id}.car_readings"]["data"]
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_kept_after_reload(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A reading is saved, and still shown after a reload until the cloud is newer."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    saved = _saved(hass_storage, entry)[CAR_PRO_ID]
+    assert saved["battery_level"] == 90
+    assert saved["mac"] == "AAAAAAAAAA04"
+    assert _state(hass, "battery") == "90"
+    assert _state(hass, "fan_intensity") == "high"
+
+    # The cloud catches up, and the saved reading is dropped
+    devices[CAR_PRO_ID]["lastConnectedAt"] = int(time.time()) + 60
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "45"
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _saved(hass_storage, entry) == {}
+    assert _state(hass, "battery") == "45"
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_saved_on_reload_after_failed_write(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A delayed save that fails after building its data is retried on reload."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    write = Store._async_write_data
+    key = f"pura.{entry.entry_id}.car_readings"
+
+    async def fail_once(store: Store, data: dict[str, Any]) -> None:
+        # Other stores, like the registries, may write meanwhile
+        if store.key == key and not failed:
+            # Like a real failure, after the delayed save built its data
+            failed.append(data.pop("data_func")())
+            raise WriteError("disk full")
+        await write(store, data)
+
+    failed: list[dict[str, Any]] = []
+    with patch.object(Store, "_async_write_data", fail_once):
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
+        await hass.async_block_till_done()
+        assert CAR_PRO_ID in failed[0]
+        assert key not in hass_storage
+
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+    assert _state(hass, "battery") == "90"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_saved_reading_loaded(
+    hass: HomeAssistant, hass_storage: dict[str, Any], register: MagicMock
+) -> None:
+    """A reading saved before a restart is shown; an unreadable one is ignored."""
+    entry = MockConfigEntry(
+        domain="pura", unique_id="pura", data={"username": "user@example.com"}
+    )
+    hass_storage[f"pura.{entry.entry_id}.car_readings"] = {
+        "version": 1,
+        "key": f"pura.{entry.entry_id}.car_readings",
+        "data": {
+            CAR_PRO_ID: {"read_at": time.time() - 60, **STATUS.__dict__},
+            "aa:aa:aa:aa:aa:99": {"read_at": time.time(), "battery": 1},
+        },
+    }
+    entry.add_to_hass(hass)
+    hass.config.components.add("bluetooth")
+    with patch("custom_components.pura.PLATFORMS", [Platform.SENSOR]):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert _state(hass, "battery") == "90"
+    assert list(entry.runtime_data.coordinator.car_readings) == [CAR_PRO_ID]
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_readings_saved_before_unload_returns(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    register: MagicMock,
+    read_car: AsyncMock,
+) -> None:
+    """The unload itself saves the readings, and nothing is written after it."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+
+    assert await async_unload_entry(hass, entry)
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+
+    # A pushed update arriving before the websocket stops drops the reading,
+    # but doesn't write again
+    await coordinator._async_handle_message(
+        {
+            "deviceId": CAR_PRO_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": {"lastConnectedAt": int(time.time()) + 60},
+        }
+    )
+    assert CAR_PRO_ID not in coordinator.car_readings
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
+    await hass.async_block_till_done()
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_during_unload_write_saved(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """A reading that arrives while the unload is writing is saved too."""
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+
+    write = Store._async_write_data
+    key = f"pura.{entry.entry_id}.car_readings"
+    writing, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_write(store: Store, data: dict[str, Any]) -> None:
+        if store.key == key and not writing.is_set():
+            writing.set()
+            await release.wait()
+        await write(store, data)
+
+    with patch.object(Store, "_async_write_data", slow_write):
+        unload = hass.async_create_task(
+            hass.config_entries.async_unload(entry.entry_id)
+        )
+        await writing.wait()
+        newer = PuraCarStatus(**STATUS.__dict__ | {"battery_level": 70})
+        coordinator.async_set_car_status(CAR_PRO_ID, newer, time.time())
+        release.set()
+        assert await unload
+    assert _saved(hass_storage, entry)[CAR_PRO_ID]["battery_level"] == 70
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "70"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_saved_readings_removed_with_entry(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    register: MagicMock,
+    read_car: AsyncMock,
+) -> None:
+    """Removing the config entry deletes its saved readings."""
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_unload(entry.entry_id)
+    assert CAR_PRO_ID in _saved(hass_storage, entry)
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert f"pura.{entry.entry_id}.car_readings" not in hass_storage
 
 
 async def _later(hass: HomeAssistant) -> None:

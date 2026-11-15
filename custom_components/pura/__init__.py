@@ -25,7 +25,11 @@ from homeassistant.loader import async_get_integration
 
 from .car_bluetooth import async_setup_car_bluetooth
 from .const import CONF_ID_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
-from .coordinator import PuraDataUpdateCoordinator, PuraFirmwareDataUpdateCoordinator
+from .coordinator import (
+    PuraDataUpdateCoordinator,
+    PuraFirmwareDataUpdateCoordinator,
+    car_readings_store,
+)
 from .services import async_setup_services
 
 type PuraConfigEntry = ConfigEntry[PuraIntegrationData]
@@ -97,6 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
 
     coordinator = PuraDataUpdateCoordinator(hass, client=client, config_entry=entry)
     entry.async_on_unload(coordinator.subscriber.stop)
+    await coordinator.async_load_car_readings()
     await coordinator.async_config_entry_first_refresh()
 
     firmware_coordinator = PuraFirmwareDataUpdateCoordinator(
@@ -123,7 +128,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool
 
 async def async_unload_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> bool:
     """Unload config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        # Awaited here, since Home Assistant stops waiting for unload callbacks
+        # after a while, and a reload or removal mustn't race the write
+        await entry.runtime_data.coordinator.async_flush_car_readings()
+    return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: PuraConfigEntry) -> None:
+    """Delete the car readings saved for a removed config entry."""
+    await car_readings_store(hass, entry.entry_id).async_remove()
 
 
 async def update_listener(hass: HomeAssistant, entry: PuraConfigEntry) -> None:
