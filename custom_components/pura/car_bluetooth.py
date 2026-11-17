@@ -16,6 +16,7 @@ import time
 
 from pypura import PuraBluetoothError
 from pypura.car_ble import CAR_SERVICE_UUID, read_car_status
+from pypura.utils import redact_id
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
@@ -23,7 +24,6 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 
 from .coordinator import PuraDataUpdateCoordinator
-from .helpers import redact_id
 
 _LOGGER = logging.getLogger(__name__)
 

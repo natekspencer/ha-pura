@@ -12,7 +12,7 @@ from typing import Any, Literal, NamedTuple
 
 from pypura import Pura, PuraApiException, PuraAuthenticationError
 from pypura.car_ble import PuraCarStatus
-from pypura.utils import dig, merge_websocket_update
+from pypura.utils import dig, merge_websocket_update, redact_id, redact_ids
 from pypura.ws_subscriber import WebSocketSubscriber
 
 from homeassistant.config_entries import ConfigEntry
@@ -36,7 +36,6 @@ from .const import (
     MIN_MAX_BACKOFF,
     UNKNOWN_FRAGRANCE_CODE,
 )
-from .helpers import redact_id, redact_ids
 
 _LOGGER = logging.getLogger(__name__)
 

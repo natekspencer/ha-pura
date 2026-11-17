@@ -8,7 +8,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
-from custom_components.pura.helpers import redact_id
 from homeassistant.core import HomeAssistant
 
 from . import setup_integration
@@ -17,12 +16,6 @@ from .conftest import CAR_PRO_ID, HOME_MINI_ID, HOME_V5_ID
 
 def _hex(value: str) -> str:
     return re.sub(r"[^0-9A-F]", "", value.upper())
-
-
-def test_redact_id() -> None:
-    """A device's ID and MAC redact the same way, whatever their format."""
-    assert redact_id("aa:aa:aa:aa:aa:04") == "**REDACTED**AA04"
-    assert redact_id("AAAAAAAAAA04") == "**REDACTED**AA04"
 
 
 async def test_device_ids_partially_redacted(

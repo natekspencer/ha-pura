@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from pypura.utils import redact_id, redact_ids
+
 from homeassistant.components.diagnostics.util import async_redact_data
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant
 
 from . import PuraConfigEntry
-from .helpers import redact_id, redact_ids
 
 TO_REDACT = {
     CONF_LATITUDE,
