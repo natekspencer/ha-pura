@@ -59,6 +59,13 @@ class PuraSensorEntityDescription(SensorEntityDescription):
     vial_fn: Callable[[dict], Any] | None = None
 
 
+def _car_intensity(data: dict[str, Any]) -> str | None:
+    """Return a car's intensity, which a Bluetooth reading without a pod keeps."""
+    if has_fragrance(data, 1):
+        return data["bay1"].get("fanIntensity")
+    return data.get("fanIntensity")
+
+
 def _fragrance_remaining(data: dict[str, Any], bay: int) -> float | None:
     """Get the fragrance remaining, or None if the runtime it's worked out from is.
 
@@ -125,11 +132,13 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             device_class=SensorDeviceClass.ENUM,
             options=list(CAR_INTENSITIES),
             entity_category=EntityCategory.DIAGNOSTIC,
-            available_fn=lambda data: has_fragrance(data, 1),
+            available_fn=lambda data: (
+                has_fragrance(data, 1) or data.get("fanIntensity") is not None
+            ),
             # An enum sensor rejects other values, so show those as unknown
             value_fn=lambda data: (
                 intensity
-                if (intensity := data["bay1"]["fanIntensity"]) in CAR_INTENSITIES
+                if (intensity := _car_intensity(data)) in CAR_INTENSITIES
                 else None
             ),
         ),

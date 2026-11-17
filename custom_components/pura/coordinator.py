@@ -80,6 +80,8 @@ def apply_car_status(
         return True
     if status.fragrance_code is None:
         device["bay1"] = None
+        # Without a pod there's no bay to hold it, but the car still has an intensity
+        device["fanIntensity"] = status.intensity
         return True
 
     bay = device["bay1"] = dict(device.get("bay1") or {})

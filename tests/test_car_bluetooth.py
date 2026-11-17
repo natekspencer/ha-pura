@@ -260,21 +260,39 @@ async def test_new_pod_of_same_fragrance(
     )
 
 
-@pytest.mark.usefixtures("mock_pura", "car")
+@pytest.mark.usefixtures("car")
 async def test_pod_removed(
-    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
 ) -> None:
-    """Without a pod, the fragrance entities are unavailable."""
+    """Without a pod, the fragrance entities are unavailable, but not the intensity."""
     read_car.return_value = PuraCarStatus(
         **STATUS.__dict__
-        | {"fragrance_code": None, "cartridge_id": None, "runtime": None}
+        | {
+            "intensity": "off",
+            "fragrance_code": None,
+            "cartridge_id": None,
+            "runtime": None,
+        }
     )
-    _, discover = await _setup(hass, register)
+    # Each poll returns new data, like the API
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
     discover(ADDRESS)
     await hass.async_block_till_done()
 
     assert _state(hass, "fragrance") == "unavailable"
+    assert _state(hass, "fan_intensity") == "off"
     assert _state(hass, "battery") == "90"
+
+    # The cloud has no intensity without a pod, so it goes with the reading
+    devices[CAR_PRO_ID] |= {"lastConnectedAt": int(time.time()) + 60, "bay1": None}
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _state(hass, "fan_intensity") == "unavailable"
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
