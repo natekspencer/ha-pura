@@ -8,6 +8,7 @@ shows that until the cloud catches up. Nothing is sent to the cloud.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 import logging
 import re
@@ -15,6 +16,7 @@ import time
 
 from pypura import PuraBluetoothError
 from pypura.car_ble import CAR_SERVICE_UUID, read_car_status
+from pypura.utils import redact_id
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
@@ -22,6 +24,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 
 from .coordinator import PuraDataUpdateCoordinator
+from .helpers import redact_id_in
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,12 +82,20 @@ def async_setup_car_bluetooth(
                 return
             status = await read_car_status(ble_device)
         except PuraBluetoothError as err:
-            _LOGGER.debug("Couldn't read %s over Bluetooth: %s", device_id, err)
+            _LOGGER.debug(
+                "Couldn't read %s over Bluetooth: %s",
+                redact_id(device_id),
+                redact_id_in(err, device_id),
+            )
             return
         finally:
             reading.discard(device_id)
             _async_schedule_read(device_id, address)
-        _LOGGER.debug("Read %s over Bluetooth: %s", device_id, status)
+        _LOGGER.debug(
+            "Read %s over Bluetooth: %s",
+            redact_id(device_id),
+            replace(status, mac=redact_id(status.mac)),
+        )
         coordinator.async_set_car_status(device_id, status, time.time())
 
     @callback
