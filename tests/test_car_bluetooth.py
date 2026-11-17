@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable, Generator
 import copy
 from datetime import timedelta
+import logging
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -461,22 +462,23 @@ async def test_reading_kept_after_websocket_update(
 async def test_diagnostics_show_reading(
     hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
 ) -> None:
-    """Diagnostics show a car's Bluetooth reading, with its MAC redacted."""
+    """Diagnostics show a car's Bluetooth reading, with its MAC partially redacted."""
+    car, home = "**REDACTED**AA04", "**REDACTED**AA02"  # CAR_PRO_ID, HOME_V5_ID
     entry, discover = await _setup(hass, register)
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-    assert "bluetooth" not in diagnostics[CAR_PRO_ID]
+    assert "bluetooth" not in diagnostics[car]
 
     before = int(time.time())
     discover(ADDRESS)
     await hass.async_block_till_done()
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-    reading = diagnostics[CAR_PRO_ID]["bluetooth"]
+    reading = diagnostics[car]["bluetooth"]
     assert reading["readAt"] >= before
-    assert reading["mac"] == "**REDACTED**"
+    assert reading["mac"] == car
     assert reading["battery_level"] == 90
     assert reading["runtime"] == 192120
-    assert diagnostics[CAR_PRO_ID]["bay1"]["activeAt"] == reading["readAt"]
-    assert "bluetooth" not in diagnostics[HOME_V5_ID]
+    assert diagnostics[car]["bay1"]["activeAt"] == reading["readAt"]
+    assert "bluetooth" not in diagnostics[home]
     # The coordinator's data is left as is
     assert "bluetooth" not in entry.runtime_data.coordinator.data[CAR_PRO_ID]
 
@@ -743,6 +745,29 @@ async def test_failed_read(
     read_car.side_effect = None
     await _later(hass)
     assert _state(hass, "battery") == "90"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_logs_partially_redact_car(
+    hass: HomeAssistant,
+    register: MagicMock,
+    read_car: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Logs show a car's ID and MAC as diagnostics do, keeping the last 4 digits."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.pura")
+    read_car.side_effect = PuraBluetoothError("No reply to command 1")
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    read_car.side_effect = None
+    await _later(hass)
+
+    assert "Couldn't read **REDACTED**AA04 over Bluetooth" in caplog.text
+    assert "Read **REDACTED**AA04 over Bluetooth" in caplog.text
+    assert "mac='**REDACTED**AA04'" in caplog.text
+    for full in (CAR_PRO_ID, STATUS.mac):
+        assert full.upper() not in caplog.text.upper()
 
 
 @pytest.mark.usefixtures("mock_pura", "car")

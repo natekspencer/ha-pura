@@ -36,6 +36,7 @@ from .const import (
     MIN_MAX_BACKOFF,
     UNKNOWN_FRAGRANCE_CODE,
 )
+from .helpers import redact_id, redact_ids
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -238,7 +239,11 @@ class PuraDataUpdateCoordinator(
                 read_at = float(fields.pop("read_at"))
                 self._car_readings[device_id] = (read_at, PuraCarStatus(**fields))
             except (AttributeError, KeyError, TypeError, ValueError):
-                _LOGGER.debug("Ignoring a saved reading of %s: %s", device_id, reading)
+                _LOGGER.debug(
+                    "Ignoring a saved reading of %s: %s",
+                    redact_id(device_id),
+                    redact_ids(reading),
+                )
 
     def _car_readings_data(self) -> dict[str, Any]:
         return {
@@ -287,7 +292,7 @@ class PuraDataUpdateCoordinator(
                 del self._car_readings[device_id]
                 dropped = True
             elif not apply_car_status(device, status, read_at):
-                _LOGGER.debug("The cloud has newer data for %s", device_id)
+                _LOGGER.debug("The cloud has newer data for %s", redact_id(device_id))
                 del self._car_readings[device_id]
                 dropped = True
         if dropped:
@@ -469,7 +474,7 @@ class PuraFirmwareDataUpdateCoordinator(
             for device, result in zip(device_list, results):
                 if isinstance(result, Exception):
                     _LOGGER.warning(
-                        "Firmware check failed for %s: %s", device.id, result
+                        "Firmware check failed for %s: %s", redact_id(device.id), result
                     )
                     continue
                 data[device.id] = result
