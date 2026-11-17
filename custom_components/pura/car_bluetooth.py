@@ -24,6 +24,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 
 from .coordinator import PuraDataUpdateCoordinator
+from .helpers import redact_id_in
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,7 +83,9 @@ def async_setup_car_bluetooth(
             status = await read_car_status(ble_device)
         except PuraBluetoothError as err:
             _LOGGER.debug(
-                "Couldn't read %s over Bluetooth: %s", redact_id(device_id), err
+                "Couldn't read %s over Bluetooth: %s",
+                redact_id(device_id),
+                redact_id_in(err, device_id),
             )
             return
         finally:

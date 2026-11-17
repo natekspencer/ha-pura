@@ -101,6 +101,30 @@ async def test_failed_update_keeps_devices(
     )
 
 
+async def test_failed_firmware_check_redacts_device_id(
+    hass: HomeAssistant, mock_pura: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed firmware check's error doesn't log the full device ID."""
+
+    def fail(device_id: str, *_: object) -> None:
+        # A connection error quotes the request's URL, which holds the device ID
+        raise PuraApiException(
+            f"Failed to resolve: /v3/firmware/{device_id}/config "
+            f"or {device_id.replace(':', '%3A').upper()}"
+        )
+
+    mock_pura.get_latest_firmware_details.side_effect = fail
+    entry = await setup_integration(hass, [Platform.SENSOR])
+    await entry.runtime_data.firmware_coordinator.async_refresh()
+
+    assert (
+        "Firmware check failed for **REDACTED**AA02: Failed to resolve: "
+        "/v3/firmware/**REDACTED**AA02/config or **REDACTED**AA02"
+    ) in caplog.text
+    assert HOME_V5_ID not in caplog.text.lower()
+    assert HOME_V5_ID.replace(":", "") not in caplog.text.lower()
+
+
 async def test_unload_stops_subscriber(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:

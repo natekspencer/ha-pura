@@ -756,14 +756,18 @@ async def test_logs_partially_redact_car(
 ) -> None:
     """Logs show a car's ID and MAC as diagnostics do, keeping the last 4 digits."""
     caplog.set_level(logging.DEBUG, logger="custom_components.pura")
-    read_car.side_effect = PuraBluetoothError("No reply to command 1")
+    # pypura's connection errors quote the car's address
+    read_car.side_effect = PuraBluetoothError(f"Couldn't connect to {ADDRESS}")
     _, discover = await _setup(hass, register)
     discover(ADDRESS)
     await hass.async_block_till_done()
     read_car.side_effect = None
     await _later(hass)
 
-    assert "Couldn't read **REDACTED**AA04 over Bluetooth" in caplog.text
+    assert (
+        "Couldn't read **REDACTED**AA04 over Bluetooth: "
+        "Couldn't connect to **REDACTED**AA04"
+    ) in caplog.text
     assert "Read **REDACTED**AA04 over Bluetooth" in caplog.text
     assert "mac='**REDACTED**AA04'" in caplog.text
     for full in (CAR_PRO_ID, STATUS.mac):

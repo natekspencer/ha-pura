@@ -36,6 +36,7 @@ from .const import (
     MIN_MAX_BACKOFF,
     UNKNOWN_FRAGRANCE_CODE,
 )
+from .helpers import redact_id_in
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -473,7 +474,9 @@ class PuraFirmwareDataUpdateCoordinator(
             for device, result in zip(device_list, results):
                 if isinstance(result, Exception):
                     _LOGGER.warning(
-                        "Firmware check failed for %s: %s", redact_id(device.id), result
+                        "Firmware check failed for %s: %s",
+                        redact_id(device.id),
+                        redact_id_in(result, device.id),
                     )
                     continue
                 data[device.id] = result
