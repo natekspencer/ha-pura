@@ -123,6 +123,8 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
                 self._handle_coordinator_update
             )
         )
+        # Populate the state now rather than waiting for the next coordinator update
+        self._handle_coordinator_update()
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
