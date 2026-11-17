@@ -114,7 +114,9 @@ class PuraEntity(
             manufacturer="Pura",
             model=get_model_name(device),
             name=get_device_name(device),
-            serial_number=device_id,
+            # Pura doesn't expose a serial number. Older versions put the MAC here,
+            # so clear it explicitly on devices that are already registered.
+            serial_number=None,
             suggested_area=dig(device, "roomProfile.name"),
             sw_version=fw_version,
             hw_version=device.get("hwVersion"),
