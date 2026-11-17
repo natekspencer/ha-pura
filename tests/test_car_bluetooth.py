@@ -506,10 +506,27 @@ async def test_podless_intensity_dropped_with_reading(
     assert CAR_PRO_ID not in coordinator.car_readings
     assert _state(hass, "fan_intensity") == "unavailable"
 
-    # A later reading with a pod doesn't leave the podless intensity behind either
-    read_car.return_value = STATUS
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_podless_intensity_dropped_by_reading_with_pod(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A reading with a pod replaces the intensity a reading without one kept."""
+    no_pod = {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+    read_car.return_value = PuraCarStatus(
+        **STATUS.__dict__ | no_pod | {"runtime": None}
+    )
+    entry, discover = await _setup(hass, register)
+    coordinator = entry.runtime_data.coordinator
     discover(ADDRESS)
     await hass.async_block_till_done()
+    assert coordinator.data[CAR_PRO_ID]["fanIntensity"] == "off"
+
+    read_car.return_value = STATUS
+    await _later(hass)
+    assert read_car.await_count == 2
+    assert coordinator.data[CAR_PRO_ID]["bay1"]["code"] == "FZYC"
+    assert _state(hass, "fan_intensity") == "high"
     assert "fanIntensity" not in coordinator.data[CAR_PRO_ID]
 
 
