@@ -84,6 +84,13 @@ const esc = (value) =>
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
   );
 
+// Whether the title already names the area as whole words, e.g. "Office Diffuser" for "Office"
+// but not "Garden Diffuser" for "Den".
+const titleNamesArea = (title, area) => {
+  const escaped = area.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(title);
+};
+
 const isUnavailable = (stateObj) =>
   !stateObj || stateObj.state === "unavailable" || stateObj.state === "unknown";
 
@@ -616,7 +623,7 @@ class PuraDiffuserCard extends HTMLElement {
         : "";
     const lastActive = this._lastActiveText();
     const subtitle = [
-      area && area !== title ? area : null,
+      area && !titleNamesArea(title, area) ? area : null,
       running ? `Diffusing ${activeName}`.trim() : lastActive ? `Last active ${lastActive}` : "Idle",
     ]
       .filter(Boolean)
