@@ -15,6 +15,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.loader import async_get_integration
 
 from . import MockConfigEntry, setup_integration
+from .conftest import HOME_V5_ID
 
 
 async def test_card_registered(
@@ -54,6 +55,28 @@ async def test_account_without_devices_removes_all_devices(
     assert not dr.async_entries_for_config_entry(device_registry, entry.entry_id)
     assert not er.async_entries_for_config_entry(entity_registry, entry.entry_id)
     assert "Traceback" not in caplog.text
+
+
+async def test_device_mac_not_used_as_serial_number(
+    hass: HomeAssistant, mock_pura: MagicMock
+) -> None:
+    """Test the MAC isn't shown as a serial number and older ones are cleared."""
+    entry = await setup_integration(hass, [Platform.SENSOR])
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, HOME_V5_ID), entry.entry_id
+    )
+    assert device
+    assert device.serial_number is None
+
+    # Earlier versions stored the MAC as the serial number.
+    device_registry.async_update_device(device.id, serial_number=HOME_V5_ID)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device = device_registry.async_get(device.id)
+    assert device
+    assert device.serial_number is None
 
 
 async def test_failed_update_keeps_devices(

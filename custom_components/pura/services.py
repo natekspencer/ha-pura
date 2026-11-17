@@ -51,7 +51,11 @@ async def async_get_devices(call: ServiceCall) -> dict[str, PuraDataUpdateCoordi
         if entity_entry and entity_entry.config_entry_id and entity_entry.device_id:
             if (device_entry := dev_reg.async_get(entity_entry.device_id)) is None:
                 continue
-            if (serial := device_entry.serial_number) and serial not in devices:
+            device_id = next(
+                (id_ for domain, id_ in device_entry.identifiers if domain == DOMAIN),
+                None,
+            )
+            if device_id and device_id not in devices:
                 entry = hass.config_entries.async_get_entry(
                     device_entry.config_entry_id
                 )
@@ -60,7 +64,7 @@ async def async_get_devices(call: ServiceCall) -> dict[str, PuraDataUpdateCoordi
                     and entry.domain == DOMAIN
                     and entry.state is ConfigEntryState.LOADED
                 ):
-                    devices[serial] = entry.runtime_data.coordinator
+                    devices[device_id] = entry.runtime_data.coordinator
 
     return devices
 
