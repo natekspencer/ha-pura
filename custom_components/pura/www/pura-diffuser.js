@@ -85,10 +85,10 @@ const esc = (value) =>
   );
 
 // Whether the title already names the area as whole words, e.g. "Office Diffuser" for "Office"
-// but not "Garden Diffuser" for "Den".
+// but not "Garden Diffuser" for "Den" or "Café Diffuser" (with a combining accent) for "Cafe".
 const titleNamesArea = (title, area) => {
   const escaped = area.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(title);
+  return new RegExp(`(^|[^\\p{L}\\p{M}\\p{N}])${escaped}($|[^\\p{L}\\p{M}\\p{N}])`, "iu").test(title);
 };
 
 const isUnavailable = (stateObj) =>
@@ -622,8 +622,10 @@ class PuraDiffuserCard extends HTMLElement {
         ? activeBayState.state
         : "";
     const lastActive = this._lastActiveText();
+    // When the title stands in for the area, let it wrap so a truncated title can't hide it.
+    const areaInTitle = !!area && titleNamesArea(title, area);
     const subtitle = [
-      area && !titleNamesArea(title, area) ? area : null,
+      area && !areaInTitle ? area : null,
       running ? `Diffusing ${activeName}`.trim() : lastActive ? `Last active ${lastActive}` : "Idle",
     ]
       .filter(Boolean)
@@ -662,7 +664,7 @@ class PuraDiffuserCard extends HTMLElement {
             ${badgeEntity ? `title="Fragrance"` : "disabled"}>
             <ha-icon icon="mdi:scent"></ha-icon>
           </button>
-          <div class="titles">
+          <div class="titles ${areaInTitle ? "wrap" : ""}">
             ${hass.user?.is_admin && device
               ? `<button class="title link" data-action="device" title="Open device page">
                   <span class="title-text">${esc(title)}</span><ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -861,6 +863,7 @@ const STYLES = `
     flex: none; display: flex; /* centre the icon itself, not its text baseline */
     --mdc-icon-size: 18px; color: var(--secondary-text-color); transition: transform 0.18s ease-in-out;
   }
+  .titles.wrap .title, .titles.wrap .title-text { white-space: normal; overflow-wrap: anywhere; }
   .title.link:hover ha-icon, .title.link:focus-visible ha-icon { transform: translateX(3px); }
   .subtitle { font-size: 13px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
