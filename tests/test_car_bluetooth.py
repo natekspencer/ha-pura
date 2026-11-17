@@ -260,21 +260,39 @@ async def test_new_pod_of_same_fragrance(
     )
 
 
-@pytest.mark.usefixtures("mock_pura", "car")
+@pytest.mark.usefixtures("car")
 async def test_pod_removed(
-    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    devices: dict[str, dict[str, Any]],
 ) -> None:
-    """Without a pod, the fragrance entities are unavailable."""
+    """Without a pod, the fragrance entities are unavailable, but not the intensity."""
     read_car.return_value = PuraCarStatus(
         **STATUS.__dict__
-        | {"fragrance_code": None, "cartridge_id": None, "runtime": None}
+        | {
+            "intensity": "off",
+            "fragrance_code": None,
+            "cartridge_id": None,
+            "runtime": None,
+        }
     )
-    _, discover = await _setup(hass, register)
+    # Each poll returns new data, like the API
+    mock_pura.get_devices.side_effect = lambda: copy.deepcopy(devices)
+    entry, discover = await _setup(hass, register)
     discover(ADDRESS)
     await hass.async_block_till_done()
 
     assert _state(hass, "fragrance") == "unavailable"
+    assert _state(hass, "fan_intensity") == "off"
     assert _state(hass, "battery") == "90"
+
+    # The cloud has no intensity without a pod, so it goes with the reading
+    devices[CAR_PRO_ID] |= {"lastConnectedAt": int(time.time()) + 60, "bay1": None}
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _state(hass, "fan_intensity") == "unavailable"
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
@@ -455,6 +473,61 @@ async def test_reading_kept_after_websocket_update(
     await hass.async_block_till_done()
     assert _state(hass, "battery") == "80"
     assert CAR_PRO_ID not in coordinator.car_readings
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_podless_intensity_dropped_with_reading(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A pushed update that outdates a reading without a pod drops its intensity.
+
+    Pushed updates are merged into the cloud data, so the intensity the reading kept
+    would otherwise stay.
+    """
+    no_pod = {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+    read_car.return_value = PuraCarStatus(
+        **STATUS.__dict__ | no_pod | {"runtime": None}
+    )
+    entry, discover = await _setup(hass, register)
+    coordinator = entry.runtime_data.coordinator
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert _state(hass, "fan_intensity") == "off"
+
+    await coordinator._async_handle_message(
+        {
+            "deviceId": CAR_PRO_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": {"bay1": None, "lastConnectedAt": int(time.time()) + 60},
+        }
+    )
+    await hass.async_block_till_done()
+    assert CAR_PRO_ID not in coordinator.car_readings
+    assert _state(hass, "fan_intensity") == "unavailable"
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
+async def test_podless_intensity_dropped_by_reading_with_pod(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A reading with a pod replaces the intensity a reading without one kept."""
+    no_pod = {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+    read_car.return_value = PuraCarStatus(
+        **STATUS.__dict__ | no_pod | {"runtime": None}
+    )
+    entry, discover = await _setup(hass, register)
+    coordinator = entry.runtime_data.coordinator
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert coordinator.data[CAR_PRO_ID]["fanIntensity"] == "off"
+
+    read_car.return_value = STATUS
+    await _later(hass)
+    assert read_car.await_count == 2
+    assert coordinator.data[CAR_PRO_ID]["bay1"]["code"] == "FZYC"
+    assert _state(hass, "fan_intensity") == "high"
+    assert "fanIntensity" not in coordinator.data[CAR_PRO_ID]
 
 
 @pytest.mark.usefixtures("mock_pura", "car")

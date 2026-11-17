@@ -56,8 +56,12 @@ def apply_car_status(
     """Layer a car's Bluetooth reading over its cloud data.
 
     The car only syncs with the cloud through the Pura app, so a reading is usually
-    newer. Returns `False`, changing nothing, if the cloud has caught up since.
+    newer. Returns `False` if the cloud has caught up since, changing nothing but
+    dropping the intensity an earlier reading kept for a car without a pod.
     """
+    # Only a reading without a pod sets this (the cloud never does), and pushed cloud
+    # updates are merged into the device, so it would outlive the reading
+    device.pop("fanIntensity", None)
     cloud_at = max(
         device.get("lastConnectedAt") or 0, dig(device, "bay1.activeAt") or 0
     )
@@ -80,6 +84,8 @@ def apply_car_status(
         return True
     if status.fragrance_code is None:
         device["bay1"] = None
+        # Without a pod there's no bay to hold it, but the car still has an intensity
+        device["fanIntensity"] = status.intensity
         return True
 
     bay = device["bay1"] = dict(device.get("bay1") or {})
