@@ -476,6 +476,44 @@ async def test_reading_kept_after_websocket_update(
 
 
 @pytest.mark.usefixtures("mock_pura", "car")
+async def test_podless_intensity_dropped_with_reading(
+    hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A pushed update that outdates a reading without a pod drops its intensity.
+
+    Pushed updates are merged into the cloud data, so the intensity the reading kept
+    would otherwise stay.
+    """
+    no_pod = {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+    read_car.return_value = PuraCarStatus(
+        **STATUS.__dict__ | no_pod | {"runtime": None}
+    )
+    entry, discover = await _setup(hass, register)
+    coordinator = entry.runtime_data.coordinator
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert _state(hass, "fan_intensity") == "off"
+
+    await coordinator._async_handle_message(
+        {
+            "deviceId": CAR_PRO_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": {"bay1": None, "lastConnectedAt": int(time.time()) + 60},
+        }
+    )
+    await hass.async_block_till_done()
+    assert CAR_PRO_ID not in coordinator.car_readings
+    assert _state(hass, "fan_intensity") == "unavailable"
+
+    # A later reading with a pod doesn't leave the podless intensity behind either
+    read_car.return_value = STATUS
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert "fanIntensity" not in coordinator.data[CAR_PRO_ID]
+
+
+@pytest.mark.usefixtures("mock_pura", "car")
 async def test_diagnostics_show_reading(
     hass: HomeAssistant, register: MagicMock, read_car: AsyncMock
 ) -> None:
