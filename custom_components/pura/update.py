@@ -88,10 +88,9 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         device = self.get_device()
-
-        in_progress = False
-        if ota := (device.get("ota") or {}):
-            in_progress = ota.get("status") not in ("Finished",)
+        ota = device.get("ota") or {}
+        status = ota.get("status")
+        in_progress = bool(status) and status != "Finished"
         self._attr_in_progress = in_progress
 
         installed_version: str | None = None
@@ -111,10 +110,7 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
                 latest_version = str(details.get("version"))
         self._attr_latest_version = latest_version
 
-        update_percentage: int | float | None = None
-        if "percent" in ota:
-            update_percentage = ota["percent"]
-        self._attr_update_percentage = update_percentage
+        self._attr_update_percentage = ota.get("percent") if in_progress else None
 
         super()._handle_coordinator_update()
 
@@ -127,6 +123,8 @@ class PuraUpdateEntity(PuraEntity, UpdateEntity):
                 self._handle_coordinator_update
             )
         )
+        # Populate the state now rather than waiting for the next coordinator update
+        self._handle_coordinator_update()
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
