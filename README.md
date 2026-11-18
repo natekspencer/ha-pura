@@ -4,6 +4,7 @@
 [![HACS Badge](https://img.shields.io/badge/HACS-default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Buy Me A Coffee/Beer](https://img.shields.io/badge/Buy_Me_A_☕/🍺-F16061?style=for-the-badge&logo=ko-fi&logoColor=white&labelColor=grey)](https://ko-fi.com/natekspencer)
 [![Sponsor on GitHub](https://img.shields.io/badge/Sponsor_💜-6f42c1?style=for-the-badge&logo=github&logoColor=white&labelColor=grey)](https://github.com/sponsors/natekspencer)
+[![GitHub Stars](https://img.shields.io/github/stars/natekspencer/ha-pura?style=for-the-badge&logo=github&label=Star&color=yellow)](https://github.com/natekspencer/ha-pura)
 
 ![Downloads](https://img.shields.io/github/downloads/natekspencer/ha-pura/total?style=flat-square)
 ![Latest Downloads](https://img.shields.io/github/downloads/natekspencer/ha-pura/latest/total?style=flat-square)
@@ -197,7 +198,7 @@ I maintain this Home Assistant integration in my spare time. If you find it usef
 - 💜 [Sponsor me on GitHub](https://github.com/sponsors/natekspencer)
 - ☕ [Buy me a coffee / beer](https://ko-fi.com/natekspencer)
 - 💸 [PayPal (direct support)](https://www.paypal.com/paypalme/natekspencer)
-- ⭐ [Star this project](https://github.com/natekspencer/ha-pura)
+- ⭐ [Star this project](https://github.com/natekspencer/ha-pura) and [pypura](https://github.com/natekspencer/pypura), the Python library that powers it
 - 📦 If you’d like to support in other ways, such as donating hardware for testing, feel free to [reach out to me](https://github.com/natekspencer)
 
 If you don't already own a Pura diffuser, please consider using [my referral code (JG5JN31)](http://rwrd.io/ref_JG5JN31) to get $20 off your first order of $50+ (as well as a tip to me in appreciation)!
