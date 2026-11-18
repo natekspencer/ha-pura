@@ -122,6 +122,7 @@ async def test_low_fragrance_updates(
         ("bay_3_low_fragrance", "unavailable"),
         ("bay_4_low_fragrance", "on"),
         ("connected", "on"),
+        ("lid", "off"),  # closed
     ],
 )
 async def test_luxe_binary_sensors(
@@ -133,3 +134,44 @@ async def test_luxe_binary_sensors(
 ) -> None:
     """Test the Luxe has a low fragrance sensor for each of its four slots."""
     assert _state(hass, entity_registry, HOME_LUXE_ID, key) == expected
+
+
+@pytest.mark.parametrize(
+    ("lid_closed", "expected"),
+    [(False, STATE_ON), (None, STATE_UNAVAILABLE)],
+    ids=["open", "unknown"],
+)
+async def test_luxe_lid(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    lid_closed: bool | None,
+    expected: str,
+) -> None:
+    """Test the Luxe's lid shows open, and unavailable until the cloud reports it."""
+    if lid_closed is None:
+        del devices[HOME_LUXE_ID]["lidClosed"]
+    else:
+        devices[HOME_LUXE_ID]["lidClosed"] = lid_closed
+    await setup_integration(hass, [Platform.BINARY_SENSOR])
+    assert _state(hass, entity_registry, HOME_LUXE_ID, "lid") == expected
+
+
+async def test_luxe_lid_pushed(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+) -> None:
+    """Test the lid follows a pushed update from the cloud."""
+    entry = await setup_integration(hass, [Platform.BINARY_SENSOR])
+    await entry.runtime_data.coordinator._async_handle_message(
+        {
+            "deviceId": HOME_LUXE_ID,
+            "recordType": "DEVICE",
+            "eventType": "MODIFY",
+            "deviceRecord": {"lidClosed": False},
+        }
+    )
+    await hass.async_block_till_done()
+    assert _state(hass, entity_registry, HOME_LUXE_ID, "lid") == STATE_ON

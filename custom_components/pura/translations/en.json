@@ -54,6 +54,9 @@
       "connected": {
         "name": "Connected"
       },
+      "lid": {
+        "name": "Lid"
+      },
       "low_fragrance": {
         "name": "Low fragrance"
       }
