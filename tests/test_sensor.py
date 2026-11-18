@@ -13,7 +13,7 @@ import pytest
 from custom_components.pura.const import DOMAIN
 from custom_components.pura.sensor import _async_migrate_entities
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
-from homeassistant.const import CONF_USERNAME, Platform
+from homeassistant.const import CONF_USERNAME, EntityCategory, Platform
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -740,3 +740,53 @@ async def test_runtime_ignores_bay_from_before_timer(
     await hass.async_block_till_done()
     assert runtime(1) == 1
     assert runtime(2) == 3
+
+
+@pytest.mark.parametrize(
+    ("last_connected_at", "expected"),
+    [(1700000000, "2023-11-14T22:13:20+00:00"), (None, "unknown"), (0, "unknown")],
+)
+async def test_car_last_connected(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+    last_connected_at: int | None,
+    expected: str,
+) -> None:
+    """Test the car's last connected sensor, which is disabled by default."""
+    devices[CAR_PRO_ID]["lastConnectedAt"] = last_connected_at
+    for device_id in list(devices):
+        if device_id != CAR_PRO_ID:
+            del devices[device_id]
+    unique_id = f"{CAR_PRO_ID}-last_connected"
+    entity_registry.async_get_or_create(
+        SENSOR_DOMAIN,
+        DOMAIN,
+        unique_id,
+        suggested_object_id="car_pro_last_connected",
+        disabled_by=None,
+    )
+    await setup_integration(hass, [Platform.SENSOR])
+
+    entry = entity_registry.async_get("sensor.car_pro_last_connected")
+    assert entry.unique_id == unique_id
+    assert entry.entity_category is EntityCategory.DIAGNOSTIC
+    state = hass.states.get("sensor.car_pro_last_connected")
+    assert state.state == expected
+    assert state.attributes["device_class"] == "timestamp"
+
+
+async def test_car_last_connected_disabled_by_default(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_pura: MagicMock,
+    devices: dict[str, dict[str, Any]],
+) -> None:
+    """Test the car's last connected sensor is disabled by default."""
+    devices[CAR_PRO_ID]["lastConnectedAt"] = 1700000000
+    await setup_integration(hass, [Platform.SENSOR])
+
+    entry = entity_registry.async_get("sensor.car_pro_last_connected")
+    assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert hass.states.get("sensor.car_pro_last_connected") is None

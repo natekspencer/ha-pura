@@ -150,6 +150,18 @@ SENSORS: dict[tuple[str, ...], tuple[PuraSensorEntityDescription, ...]] = {
             available_fn=lambda data: has_fragrance(data, 1),
             value_fn=lambda data: datetime.fromtimestamp(data["bay1"]["activeAt"], UTC),
         ),
+        PuraSensorEntityDescription(
+            key="last_connected",
+            translation_key="last_connected",
+            device_class=SensorDeviceClass.TIMESTAMP,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            value_fn=lambda data: (
+                datetime.fromtimestamp(connected_at, UTC)
+                if (connected_at := data.get("lastConnectedAt"))
+                else None
+            ),
+        ),
     ),
     ("car", "mini"): (
         PuraSensorEntityDescription(

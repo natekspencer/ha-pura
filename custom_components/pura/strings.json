@@ -207,6 +207,9 @@
       "last_active": {
         "name": "Last active"
       },
+      "last_connected": {
+        "name": "Last connected"
+      },
       "runtime": {
         "name": "Runtime"
       },
