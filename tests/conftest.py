@@ -92,6 +92,7 @@ DEVICES: dict[str, dict[str, Any]] = {
         "awayMode": {"away": False, "enabled": False},
         "diffusionMode": "standard",
         "capabilities": {"diffusionModes": ["standard", "oscillation-multi-bay"]},
+        "lidClosed": True,
     },
 }
 

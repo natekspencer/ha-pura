@@ -60,7 +60,17 @@ SENSORS: dict[tuple[str, ...], tuple[PuraBinarySensorEntityDescription, ...]] = 
         ),
     ),
     ("wall", "plus"): tuple(_bay_low_fragrance(bay) for bay in (1, 2)),
-    ("luxe",): tuple(_bay_low_fragrance(bay) for bay in BAYS),
+    ("luxe",): (
+        *(_bay_low_fragrance(bay) for bay in BAYS),
+        PuraBinarySensorEntityDescription(
+            key="lid",
+            translation_key="lid",
+            device_class=BinarySensorDeviceClass.OPENING,
+            # The cloud leaves it out until the Luxe reports its lid
+            available_fn=lambda data: data.get("lidClosed") is not None,
+            on_fn=lambda data: not data["lidClosed"],
+        ),
+    ),
     ("wall", "plus", "mini", "luxe"): (
         PuraBinarySensorEntityDescription(
             key="connected",
