@@ -1050,6 +1050,40 @@ async def test_failed_report_sent_again(
 
 
 @pytest.mark.usefixtures("car")
+async def test_reading_after_failed_report_sent_in_full(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """After a failed report, the next reading is reported in full.
+
+    The cloud may have applied the failed one: here a pod going in, so a reading
+    without it, which matches the one reported before, must still report it.
+    """
+    no_pod = PuraCarStatus(
+        **STATUS.__dict__
+        | {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+        | {"runtime": None}
+    )
+    read_car.return_value = no_pod
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    read_car.return_value = STATUS
+    mock_pura.send_car_events.side_effect = PuraApiException("Timed out")
+    await _later(hass)
+    mock_pura.send_car_events.side_effect = None
+    read_car.return_value = no_pod
+    await _later(hass)
+
+    assert _sent(mock_pura) == [
+        ["changedFruck", "connect"],
+        ["changedFruck", "diffusionChanged"],  # the failed one
+        ["changedFruck", "connect"],
+    ]
+    assert mock_pura.send_car_events.call_args.args[1][0]["fragranceCode"] is None
+
+
+@pytest.mark.usefixtures("car")
 async def test_reconnect_reported_as_connection(
     hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
 ) -> None:

@@ -321,7 +321,7 @@ class PuraDataUpdateCoordinator(
 
         The first reading, and the first after the car was off or away, is reported
         as the app does on connecting, with its pod. Later ones report only what
-        changed. If the report fails, the next reading reports it again.
+        changed. If a report fails, the next reading is reported in full.
         """
         report = self._car_reports.get(device_id)
         if report is None or read_at - report.read_at > CAR_CONNECTION_GAP:
@@ -336,6 +336,8 @@ class PuraDataUpdateCoordinator(
                 self.api.send_car_events, device_id, events
             )
         except PuraApiException as err:
+            # The cloud may have applied the events anyway, so what it has is unknown
+            self._car_reports.pop(device_id, None)
             _LOGGER.debug(
                 "Couldn't report the reading of %s to the cloud: %s",
                 redact_id(device_id),
