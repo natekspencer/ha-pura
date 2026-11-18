@@ -3,7 +3,8 @@
 A car only syncs with the cloud when someone opens the Pura app, so its cloud data
 can be stale or quite old. While it's on, it advertises a Bluetooth service and answers
 locally, so whenever Home Assistant sees one of the account's cars it reads it and
-shows that until the cloud catches up. Nothing is sent to the cloud.
+shows that until the cloud catches up. Each reading is also reported to the cloud, as
+the Pura app does, so the app and the cloud catch up with it.
 """
 
 from __future__ import annotations
