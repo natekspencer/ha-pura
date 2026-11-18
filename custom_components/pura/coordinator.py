@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import timedelta
 from functools import partial
 import logging
@@ -11,7 +11,7 @@ import random
 from typing import Any, Literal, NamedTuple
 
 from pypura import Pura, PuraApiException, PuraAuthenticationError
-from pypura.car_ble import PuraCarStatus
+from pypura.car_ble import PuraCarStatus, car_change_events, car_status_events
 from pypura.utils import dig, merge_websocket_update, redact_id, redact_ids
 from pypura.ws_subscriber import WebSocketSubscriber
 
@@ -44,6 +44,19 @@ type FragranceFormat = Literal["puck", "vial"]
 
 CAR_READINGS_VERSION = 1
 CAR_READINGS_SAVE_DELAY = 10
+
+# A car not read for this long was off or away, so its next reading is reported as
+# a new connection, as the Pura app reports each time it connects to a car
+CAR_CONNECTION_GAP = 900
+
+
+@dataclass(frozen=True)
+class CarReport:
+    """What was last reported to the cloud of a car's readings."""
+
+    status: PuraCarStatus
+    """The reading reported, to compare the next one with."""
+    read_at: float
 
 
 def car_readings_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
@@ -184,6 +197,8 @@ class PuraDataUpdateCoordinator(
         self._car_readings_changed = False
         # Set once the unload starts saving them, after which only it writes
         self._car_readings_closing = False
+        # What was last reported to the cloud of each car's readings
+        self._car_reports: dict[str, CarReport] = {}
         # Fragrances looked up by format and code, None if there's no such code
         self._fragrances: dict[tuple[FragranceFormat, str], dict[str, Any] | None] = {}
         self._fragrance_lookups: set[tuple[FragranceFormat, str]] = set()
@@ -283,11 +298,66 @@ class PuraDataUpdateCoordinator(
     def async_set_car_status(
         self, device_id: str, status: PuraCarStatus, read_at: float
     ) -> None:
-        """Show a car's Bluetooth reading until the cloud has newer data."""
+        """Show a car's Bluetooth reading until the cloud has newer data.
+
+        The reading is also reported to the cloud, as the Pura app does, so the
+        app and the cloud catch up with it.
+        """
         self._car_readings[device_id] = (read_at, status)
         self._apply_car_readings()
         self._async_save_car_readings()
         self.async_update_listeners()
+        if self.config_entry:
+            self.config_entry.async_create_background_task(
+                self.hass,
+                self._async_report_car(device_id, status, read_at),
+                f"{DOMAIN} report car {device_id}",
+            )
+
+    async def _async_report_car(
+        self, device_id: str, status: PuraCarStatus, read_at: float
+    ) -> None:
+        """Report a car's reading to the cloud, then show the car as it has it.
+
+        The first reading, and the first after the car was off or away, is reported
+        as the app does on connecting, with its pod. Later ones report only what
+        changed. If a report fails, the next reading is reported in full.
+        """
+        report = self._car_reports.get(device_id)
+        if report is None or read_at - report.read_at > CAR_CONNECTION_GAP:
+            events = car_status_events(status, read_at, pod_changed=True)
+        else:
+            events = car_change_events(report.status, status, read_at)
+        if not events:
+            self._car_reports[device_id] = CarReport(status, read_at)
+            return
+        try:
+            response = await self.hass.async_add_executor_job(
+                self.api.send_car_events, device_id, events
+            )
+        except PuraApiException as err:
+            # The cloud may have applied the events anyway, so what it has is unknown
+            self._car_reports.pop(device_id, None)
+            _LOGGER.debug(
+                "Couldn't report the reading of %s to the cloud: %s",
+                redact_id(device_id),
+                redact_id_in(err, device_id),
+            )
+            return
+        _LOGGER.debug(
+            "Reported %s to the cloud: %s",
+            redact_id(device_id),
+            ", ".join(event["eventType"] for event in events),
+        )
+        self._car_reports[device_id] = CarReport(status, read_at)
+        # The response has the car as the cloud now has it, without the modelType
+        # get_devices adds, so it's merged in
+        if isinstance(cloud := response.get("device"), dict) and (
+            device := self.devices.get(device_id)
+        ):
+            device.update(cloud)
+            self._apply_car_readings()
+            self.async_set_updated_data(self.devices)
 
     def _apply_car_readings(self) -> None:
         """Layer the Bluetooth readings over the cloud data, dropping outdated ones."""

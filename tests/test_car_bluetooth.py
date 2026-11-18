@@ -15,7 +15,11 @@ from pypura import PuraApiException, PuraBluetoothError
 from pypura.car_ble import PuraCarStatus
 import pytest
 
-from custom_components.pura import async_unload_entry, car_bluetooth
+from custom_components.pura import (
+    async_unload_entry,
+    car_bluetooth,
+    coordinator as coordinator_module,
+)
 from custom_components.pura.car_bluetooth import READ_INTERVAL
 from custom_components.pura.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import Platform
@@ -936,3 +940,159 @@ async def test_unload_stops_listening(
     # Nor is the car read again
     await _later(hass)
     assert read_car.await_count == 1
+
+
+def _sent(mock_pura: MagicMock) -> list[list[str]]:
+    """Return the event types of each report sent to the cloud."""
+    return [
+        [event["eventType"] for event in call.args[1]]
+        for call in mock_pura.send_car_events.call_args_list
+    ]
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_reported_to_cloud(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """The first reading is reported as the app does on connecting, with its pod."""
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    mock_pura.send_car_events.assert_called_once()
+    device_id, events = mock_pura.send_car_events.call_args.args
+    assert device_id == CAR_PRO_ID
+    assert [event["eventType"] for event in events] == ["changedFruck", "connect"]
+    assert events[1] | {"informationSynthesizedTime": 0} == {
+        "eventType": "connect",
+        "fanIntensity": "high",
+        "firmwareVersion": "9.1.16",
+        "fragranceWeartime": 192120,
+        "batteryRemaining": 90,
+        "refillId": "pod-1",
+        "informationSynthesizedTime": 0,
+    }
+
+
+@pytest.mark.usefixtures("car")
+async def test_only_changes_reported(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """Later readings report only what changed, and nothing if nothing did."""
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    await _later(hass)  # the same reading
+    read_car.return_value = PuraCarStatus(**STATUS.__dict__ | {"intensity": "low"})
+    await _later(hass)
+
+    assert read_car.await_count == 3
+    assert _sent(mock_pura) == [["changedFruck", "connect"], ["diffusionChanged"]]
+
+
+@pytest.mark.usefixtures("car")
+async def test_runtime_reported_when_it_grows(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A reading whose runtime grew reports it, with a connect."""
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    read_car.return_value = PuraCarStatus(**STATUS.__dict__ | {"runtime": 192420})
+    await _later(hass)
+
+    assert _sent(mock_pura) == [["changedFruck", "connect"], ["connect"]]
+    assert mock_pura.send_car_events.call_args.args[1][0]["fragranceWeartime"] == 192420
+
+
+@pytest.mark.usefixtures("car")
+async def test_report_response_merged(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """The car the cloud sends back is merged in, keeping what only get_devices has."""
+    mock_pura.send_car_events.return_value = {
+        "message": "Batched Events processed successfully.",
+        "device": {"deviceId": CAR_PRO_ID, "ledBrightness": 7, "lowBattery": False},
+    }
+    entry, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    device = entry.runtime_data.coordinator.data[CAR_PRO_ID]
+    assert device["ledBrightness"] == 7
+    assert device["modelType"] == "car"
+    assert _state(hass, "battery") == "90"  # the reading is still shown
+
+
+@pytest.mark.usefixtures("car")
+async def test_failed_report_sent_again(
+    hass: HomeAssistant,
+    mock_pura: MagicMock,
+    register: MagicMock,
+    read_car: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A report the cloud rejects is sent again with the next reading."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.pura")
+    mock_pura.send_car_events.side_effect = PuraApiException(
+        f"Failed to resolve: /car/{CAR_PRO_ID.replace(':', '')}/batchedEvents"
+    )
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    assert _state(hass, "battery") == "90"  # still shown
+    assert "Couldn't report the reading of **REDACTED**AA04" in caplog.text
+    assert CAR_PRO_ID.replace(":", "").upper() not in caplog.text.upper()
+
+    mock_pura.send_car_events.side_effect = None
+    await _later(hass)
+    assert _sent(mock_pura) == [["changedFruck", "connect"]] * 2
+
+
+@pytest.mark.usefixtures("car")
+async def test_reading_after_failed_report_sent_in_full(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """After a failed report, the next reading is reported in full.
+
+    The cloud may have applied the failed one: here a pod going in, so a reading
+    without it, which matches the one reported before, must still report it.
+    """
+    no_pod = PuraCarStatus(
+        **STATUS.__dict__
+        | {"intensity": "off", "fragrance_code": None, "cartridge_id": None}
+        | {"runtime": None}
+    )
+    read_car.return_value = no_pod
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+
+    read_car.return_value = STATUS
+    mock_pura.send_car_events.side_effect = PuraApiException("Timed out")
+    await _later(hass)
+    mock_pura.send_car_events.side_effect = None
+    read_car.return_value = no_pod
+    await _later(hass)
+
+    assert _sent(mock_pura) == [
+        ["changedFruck", "connect"],
+        ["changedFruck", "diffusionChanged"],  # the failed one
+        ["changedFruck", "connect"],
+    ]
+    assert mock_pura.send_car_events.call_args.args[1][0]["fragranceCode"] is None
+
+
+@pytest.mark.usefixtures("car")
+async def test_reconnect_reported_as_connection(
+    hass: HomeAssistant, mock_pura: MagicMock, register: MagicMock, read_car: AsyncMock
+) -> None:
+    """A car read again after being off or away is reported as a new connection."""
+    _, discover = await _setup(hass, register)
+    discover(ADDRESS)
+    await hass.async_block_till_done()
+    # Any later reading is then after a gap
+    with patch.object(coordinator_module, "CAR_CONNECTION_GAP", 0):
+        await _later(hass)
+
+    assert _sent(mock_pura) == [["changedFruck", "connect"]] * 2
